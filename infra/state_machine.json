@@ -1,0 +1,235 @@
+{
+    "Comment": "Modifai Pipeline — Orchestrates document processing, dataset generation, fine-tuning, and deployment",
+    "StartAt": "RouteByMode",
+    "States": {
+        "RouteByMode": {
+            "Type": "Choice",
+            "Comment": "Branch pipeline based on user-selected mode",
+            "Choices": [
+                {
+                    "Variable": "$.mode",
+                    "StringEquals": "dataset_only",
+                    "Next": "OCR"
+                },
+                {
+                    "Variable": "$.mode",
+                    "StringEquals": "finetune_only",
+                    "Next": "FineTune"
+                },
+                {
+                    "Variable": "$.mode",
+                    "StringEquals": "dataset_and_finetune",
+                    "Next": "OCR"
+                },
+                {
+                    "Variable": "$.mode",
+                    "StringEquals": "full",
+                    "Next": "OCR"
+                }
+            ],
+            "Default": "OCR"
+        },
+        "OCR": {
+            "Type": "Task",
+            "Resource": "${OcrLambdaArn}",
+            "Comment": "Extract text from uploaded documents via Textract",
+            "ResultPath": "$",
+            "TimeoutSeconds": 900,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 5,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 2
+                }
+            ],
+            "Next": "Chunking"
+        },
+        "Chunking": {
+            "Type": "Task",
+            "Resource": "${ChunkingLambdaArn}",
+            "Comment": "Split extracted text into overlapping semantic chunks",
+            "ResultPath": "$",
+            "TimeoutSeconds": 60,
+            "Next": "PrepareMapInput"
+        },
+        "PrepareMapInput": {
+            "Type": "Task",
+            "Resource": "${PrepareMapLambdaArn}",
+            "Comment": "Read chunks from S3 and inject into event for Map state",
+            "ResultPath": "$",
+            "TimeoutSeconds": 60,
+            "Next": "GenerateDatasetMap"
+        },
+        "GenerateDatasetMap": {
+            "Type": "Map",
+            "Comment": "Generate training samples for each chunk in parallel via Bedrock",
+            "ItemsPath": "$.chunks_for_map",
+            "MaxConcurrency": 10,
+            "Iterator": {
+                "StartAt": "GenerateSamplesForChunk",
+                "States": {
+                    "GenerateSamplesForChunk": {
+                        "Type": "Task",
+                        "Resource": "${DatasetGenerationLambdaArn}",
+                        "TimeoutSeconds": 120,
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "States.TaskFailed"
+                                ],
+                                "IntervalSeconds": 3,
+                                "MaxAttempts": 2,
+                                "BackoffRate": 2
+                            }
+                        ],
+                        "End": true
+                    }
+                }
+            },
+            "ResultPath": "$.map_results",
+            "Next": "CollectGeneratedData"
+        },
+        "CollectGeneratedData": {
+            "Type": "Task",
+            "Resource": "${CollectorLambdaArn}",
+            "Comment": "Combine all per-chunk generation results into a single examples file",
+            "ResultPath": "$",
+            "TimeoutSeconds": 60,
+            "Next": "QualityControl"
+        },
+        "QualityControl": {
+            "Type": "Task",
+            "Resource": "${QualityControlLambdaArn}",
+            "Comment": "Deduplicate, score, and filter training examples by quality threshold",
+            "ResultPath": "$",
+            "TimeoutSeconds": 120,
+            "Next": "CheckIfFineTuneNeeded"
+        },
+        "CheckIfFineTuneNeeded": {
+            "Type": "Choice",
+            "Comment": "After dataset generation, check if we should continue to fine-tuning",
+            "Choices": [
+                {
+                    "Variable": "$.mode",
+                    "StringEquals": "dataset_only",
+                    "Next": "PipelineComplete"
+                }
+            ],
+            "Default": "FineTune"
+        },
+        "FineTune": {
+            "Type": "Task",
+            "Resource": "${FineTuneLambdaArn}",
+            "Comment": "Submit SageMaker training job (fire-and-forget)",
+            "ResultPath": "$",
+            "TimeoutSeconds": 60,
+            "Next": "SetTrainingCheckType"
+        },
+        "SetTrainingCheckType": {
+            "Type": "Pass",
+            "Comment": "Set check_type to 'training' for the status checker",
+            "Result": "training",
+            "ResultPath": "$.check_type",
+            "Next": "WaitForTraining"
+        },
+        "WaitForTraining": {
+            "Type": "Wait",
+            "Seconds": 60,
+            "Next": "CheckTrainingStatus"
+        },
+        "CheckTrainingStatus": {
+            "Type": "Task",
+            "Resource": "${StatusCheckerLambdaArn}",
+            "Comment": "Check SageMaker training job status (one-shot)",
+            "ResultPath": "$",
+            "TimeoutSeconds": 30,
+            "Next": "IsTrainingComplete"
+        },
+        "IsTrainingComplete": {
+            "Type": "Choice",
+            "Comment": "Route based on training job status",
+            "Choices": [
+                {
+                    "Variable": "$.check_status",
+                    "StringEquals": "Completed",
+                    "Next": "CheckIfDeployNeeded"
+                },
+                {
+                    "Variable": "$.check_status",
+                    "StringEquals": "Failed",
+                    "Next": "TrainingFailed"
+                }
+            ],
+            "Default": "WaitForTraining"
+        },
+        "TrainingFailed": {
+            "Type": "Fail",
+            "Cause": "SageMaker training job failed",
+            "Error": "TrainingJobFailed"
+        },
+        "CheckIfDeployNeeded": {
+            "Type": "Choice",
+            "Comment": "After fine-tuning, check if we should deploy an endpoint",
+            "Choices": [
+                {
+                    "Variable": "$.mode",
+                    "StringEquals": "full",
+                    "Next": "Deploy"
+                }
+            ],
+            "Default": "PipelineComplete"
+        },
+        "Deploy": {
+            "Type": "Task",
+            "Resource": "${DeployLambdaArn}",
+            "Comment": "Create SageMaker inference endpoint (fire-and-forget)",
+            "ResultPath": "$",
+            "TimeoutSeconds": 60,
+            "Next": "WaitForEndpoint"
+        },
+        "WaitForEndpoint": {
+            "Type": "Wait",
+            "Seconds": 30,
+            "Next": "CheckEndpointStatus"
+        },
+        "CheckEndpointStatus": {
+            "Type": "Task",
+            "Resource": "${StatusCheckerLambdaArn}",
+            "Comment": "Check SageMaker endpoint status (one-shot)",
+            "ResultPath": "$",
+            "TimeoutSeconds": 30,
+            "Next": "IsEndpointReady"
+        },
+        "IsEndpointReady": {
+            "Type": "Choice",
+            "Comment": "Route based on endpoint deployment status",
+            "Choices": [
+                {
+                    "Variable": "$.check_status",
+                    "StringEquals": "Completed",
+                    "Next": "PipelineComplete"
+                },
+                {
+                    "Variable": "$.check_status",
+                    "StringEquals": "Failed",
+                    "Next": "DeploymentFailed"
+                }
+            ],
+            "Default": "WaitForEndpoint"
+        },
+        "DeploymentFailed": {
+            "Type": "Fail",
+            "Cause": "SageMaker endpoint deployment failed",
+            "Error": "EndpointDeploymentFailed"
+        },
+        "PipelineComplete": {
+            "Type": "Succeed",
+            "Comment": "Pipeline finished successfully"
+        }
+    }
+}
