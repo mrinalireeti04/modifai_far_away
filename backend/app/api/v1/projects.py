@@ -63,6 +63,7 @@ class ProjectStatusRes(BaseModel):
 
 class ProjectResultsRes(BaseModel):
     status: str
+    error: Optional[dict] = None
     dataset_download_url: Optional[str] = None
     model_endpoint_url: Optional[str] = None
     training_metrics: Optional[dict] = None
@@ -274,6 +275,7 @@ async def get_project_results(project_id: str, db: AsyncSession = Depends(get_db
 
         return ProjectResultsRes(
             status=exec_output["status"],
+            error=exec_output.get("error"),
             dataset_download_url=dataset_url,
             model_endpoint_url=model_endpoint,
             training_metrics=training_metrics,

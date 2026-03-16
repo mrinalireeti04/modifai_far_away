@@ -56,12 +56,30 @@ def handler(event, context):
     example_id = 1
 
     for result in map_results:
+        chunk_id = result.get("chunk_id")
         if result.get("error"):
             chunks_failed += 1
-            logger.warning(f"Chunk {result.get('chunk_id')} had error: {result['error']}")
+            logger.warning(f"Chunk {chunk_id} had error: {result['error']}")
             continue
 
-        for sample in result.get("samples", []):
+        # Check if result is stored in S3 (pass-by-reference)
+        samples = []
+        result_key = result.get("result_key")
+        if result_key:
+            try:
+                logger.info(f"Fetching result for chunk {chunk_id} from {result_key}")
+                resp = s3_client.get_object(Bucket=BUCKET_NAME, Key=result_key)
+                result_data = json.loads(resp["Body"].read().decode("utf-8"))
+                samples = result_data.get("samples", [])
+            except Exception as e:
+                logger.error(f"Failed to fetch result key {result_key}: {e}")
+                chunks_failed += 1
+                continue
+        else:
+            # Fallback for old/direct format
+            samples = result.get("samples", [])
+
+        for sample in samples:
             sample["example_id"] = example_id
             all_examples.append(sample)
             example_id += 1

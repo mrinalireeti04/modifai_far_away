@@ -23,6 +23,7 @@ import {
     BarChart3,
     Timer,
     Settings2,
+    Terminal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -110,6 +111,49 @@ function buildStepSummary(stepName, data) {
     return lines
 }
 
+// ── Log Formatter ─────────────────────────────────────────────────────────────
+function formatLogEntry(log) {
+    const { type, label, summary, details } = log
+    
+    // Ignore noisy events
+    const noisy = ['PassStateEntered', 'PassStateExited', 'WaitStateEntered', 'WaitStateExited']
+    if (noisy.includes(type)) return null
+
+    let message = label
+    let status = 'info'
+    let icon = '•'
+
+    if (type.includes('Failed') || type.includes('Aborted') || type.includes('TimedOut')) {
+        status = 'error'
+        icon = '✕'
+        message = summary || `Failed during ${label}`
+    } else if (type.includes('Succeeded') || type.includes('Succeed')) {
+        status = 'success'
+        icon = '✓'
+        if (type === 'ExecutionSucceeded') message = 'Pipeline completed successfully'
+    } else if (type.includes('Started') || type.includes('Entered')) {
+        status = 'running'
+        icon = '→'
+        if (type === 'ExecutionStarted') message = 'Pipeline execution initiated'
+    }
+
+    // Clean up Step Functions specific labels
+    const cleanLabel = label
+        .replace('Entered: ', 'Starting ')
+        .replace('Exited: ', 'Finished ')
+        .replace(/_/g, ' ')
+
+    return {
+        id: log.id,
+        timestamp: log.timestamp,
+        message: cleanLabel,
+        detail: summary,
+        status,
+        icon,
+        raw: details
+    }
+}
+
 export default function ProjectDetailPage() {
     const { id } = useParams()
     const navigate = useNavigate()
@@ -120,6 +164,9 @@ export default function ProjectDetailPage() {
     const [loading, setLoading] = useState(true)
     const [deleting, setDeleting] = useState(false)
     const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+    const [logs, setLogs] = useState([])
+    const [showLogs, setShowLogs] = useState(false)
+    const [fetchingLogs, setFetchingLogs] = useState(false)
 
     // ── Fetch project metadata ────────────────────────────────────────────────
     useEffect(() => {
@@ -171,6 +218,31 @@ export default function ProjectDetailPage() {
         return () => clearInterval(interval)
     }, [id, project?.id, pipelineStatus])
 
+    // ── Fetch logs ───────────────────────────────────────────────────────────
+    const fetchLogs = async () => {
+        try {
+            setFetchingLogs(true)
+            const data = await apiClient.get(`projects/${id}/logs`)
+            setLogs(data.logs || [])
+        } catch (err) {
+            console.error("Logs fetch error", err)
+        } finally {
+            setFetchingLogs(false)
+        }
+    }
+
+    useEffect(() => {
+        if (!id) return
+        if (showLogs || pipelineStatus === 'RUNNING' || pipelineStatus === 'FAILED') {
+            fetchLogs()
+            // If running, poll logs frequently to keep progress accurate
+            if (pipelineStatus === 'RUNNING') {
+                const interval = setInterval(fetchLogs, 5000)
+                return () => clearInterval(interval)
+            }
+        }
+    }, [id, showLogs, pipelineStatus])
+
     // ── Fetch results when pipeline finishes ──────────────────────────────────
     useEffect(() => {
         if (pipelineStatus !== 'SUCCEEDED' && pipelineStatus !== 'FAILED') return
@@ -211,18 +283,53 @@ export default function ProjectDetailPage() {
         const isSuc = pipelineStatus === 'SUCCEEDED'
         const isErr = pipelineStatus === 'FAILED'
 
+        // Map Step Functions state names to our local step IDs
+        const stateToStepMap = {
+            'OCR': 'ocr',
+            'Chunking': 'chunking',
+            'PrepareMapInput': 'dataset_gen',
+            'DatasetGeneration': 'dataset_gen',
+            'Collector': 'dataset_gen',
+            'QualityControl': 'quality_control',
+            'FineTuning': 'fine_tuning',
+            'Deployment': 'deployment'
+        }
+
+        // Find the current active step index based on logs
+        let activeIdx = -1
+        if (isRun || isErr) {
+            // Find the most recent "Entered" state in logs
+            const enteringLogs = logs.filter(l => l.type === 'TaskStateEntered' || l.type === 'ChoiceStateEntered' || l.label.startsWith('Entered:'))
+            if (enteringLogs.length > 0) {
+                // The logs are newest first
+                const latestLog = enteringLogs[0]
+                const stateName = latestLog.label.replace('Entered: ', '')
+                const stepId = stateToStepMap[stateName]
+                if (stepId) {
+                    activeIdx = modeSteps.findIndex(s => s.id === stepId)
+                }
+            }
+        }
+
         for (let i = 0; i < stepCount; i++) {
             if (isSuc) {
                 arr.push({ step: i + 1, status: 'complete', progress: 100 })
             } else if (isErr) {
-                // Mark the last step as error, previous as complete
-                if (i === stepCount - 1) arr.push({ step: i + 1, status: 'error', progress: 50 })
-                else arr.push({ step: i + 1, status: 'complete', progress: 100 })
+                // If we know where it failed, mark that step as error
+                if (activeIdx !== -1) {
+                    if (i < activeIdx) arr.push({ step: i + 1, status: 'complete', progress: 100 })
+                    else if (i === activeIdx) arr.push({ step: i + 1, status: 'error', progress: 50 })
+                    else arr.push({ step: i + 1, status: 'pending', progress: 0 })
+                } else {
+                    // Fallback: mark the last step as error
+                    if (i === stepCount - 1) arr.push({ step: i + 1, status: 'error', progress: 50 })
+                    else arr.push({ step: i + 1, status: 'complete', progress: 100 })
+                }
             } else if (isRun) {
-                // Estimate: first half complete, middle running, rest pending
-                const mid = Math.floor(stepCount / 2)
-                if (i < mid) arr.push({ step: i + 1, status: 'complete', progress: 100 })
-                else if (i === mid) arr.push({ step: i + 1, status: 'running', progress: 65 })
+                // Use detected active step, or fallback to first step
+                const currentIdx = activeIdx !== -1 ? activeIdx : 0
+                if (i < currentIdx) arr.push({ step: i + 1, status: 'complete', progress: 100 })
+                else if (i === currentIdx) arr.push({ step: i + 1, status: 'running', progress: 75 })
                 else arr.push({ step: i + 1, status: 'pending', progress: 0 })
             } else {
                 arr.push({ step: i + 1, status: 'pending', progress: 0 })
@@ -257,6 +364,15 @@ export default function ProjectDetailPage() {
     const currentStepDef = modeSteps[displayStep]
     const StepIcon = stepIconMap[currentStepDef?.icon] || Circle
     const detail = stepDetails[currentPipelineStep.status] || stepDetails.pending
+
+    // Use specific error message if available
+    const errorDisplay = results?.error ? (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mt-2">
+            <p className="text-red-400 text-xs font-semibold uppercase tracking-wider mb-1">Pipeline Error</p>
+            <p className="text-sm font-medium text-red-100">{results.error.error}</p>
+            <p className="text-xs text-red-300/80 mt-1 font-mono">{results.error.cause}</p>
+        </div>
+    ) : detail.output
 
     const timeAgo = (dateStr) => {
         if (!dateStr) return 'Just now'
@@ -453,7 +569,9 @@ export default function ProjectDetailPage() {
                         </div>
                         <div>
                             <p className="text-muted-foreground text-xs mb-1">Status</p>
-                            <p className={`font-medium ${currentPipelineStep.status === 'error' ? 'text-red-400' : ''}`}>{detail.output}</p>
+                            <div className={`font-medium ${currentPipelineStep.status === 'error' ? 'text-red-400' : ''}`}>
+                                {currentPipelineStep.status === 'error' ? errorDisplay : detail.output}
+                            </div>
                         </div>
                     </div>
                     {currentPipelineStep.status === 'error' && (
@@ -588,6 +706,71 @@ export default function ProjectDetailPage() {
                                     </div>
                                 )
                             })}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+            {/* ── Logs Panel ─────────────────────────────────────────────────── */}
+            <div className="flex items-center justify-between pt-4">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                    <Terminal className="w-4 h-4" />
+                    Execution Logs
+                </h2>
+                <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowLogs(!showLogs)}
+                    className="text-xs gap-1.5"
+                >
+                    {showLogs ? 'Hide Logs' : 'Show Logs'}
+                    {fetchingLogs && <Loader2 className="w-3 h-3 animate-spin" />}
+                </Button>
+            </div>
+
+            {showLogs && (
+                <Card className="border-border bg-black/60 shadow-2xl overflow-hidden">
+                    <CardContent className="p-0">
+                        <div className="bg-muted/50 px-4 py-2 border-b border-border flex items-center justify-between">
+                            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">System Events</span>
+                            <span className="text-[10px] font-mono text-muted-foreground">{logs.length} events logged</span>
+                        </div>
+                        <div className="max-h-[350px] overflow-y-auto p-2 font-mono text-[11px] space-y-0.5 custom-scrollbar">
+                            {logs.length === 0 ? (
+                                <div className="py-10 text-center text-muted-foreground italic">
+                                    Waiting for execution data...
+                                </div>
+                            ) : (
+                                logs.map(log => {
+                                    const entry = formatLogEntry(log)
+                                    if (!entry) return null
+                                    
+                                    const statusColors = {
+                                        error: 'text-red-400',
+                                        success: 'text-emerald-400',
+                                        running: 'text-blue-400',
+                                        info: 'text-muted-foreground'
+                                    }
+
+                                    return (
+                                        <div key={entry.id} className="group flex items-start gap-3 py-1 px-2 hover:bg-white/5 rounded transition-colors border-l-2 border-transparent hover:border-primary/30">
+                                            <span className="text-muted-foreground/50 shrink-0 tabular-nums">
+                                                {new Date(entry.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                            </span>
+                                            <span className={`shrink-0 font-bold w-4 text-center ${statusColors[entry.status]}`}>
+                                                {entry.icon}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <p className={`font-semibold ${statusColors[entry.status]}`}>{entry.message}</p>
+                                                {entry.detail && (
+                                                    <p className="text-foreground/60 mt-0.5 line-clamp-1 group-hover:line-clamp-none transition-all">
+                                                        {entry.detail}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )
+                                })
+                            )}
                         </div>
                     </CardContent>
                 </Card>

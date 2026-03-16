@@ -40,21 +40,23 @@ s3_client = boto3.client("s3", region_name=AWS_REGION)
 
 
 def handler(event, context):
-    """Read chunks from S3 and prepare Map state input."""
+    """Read chunks from S3 and prepare Map state input metadata."""
     s3_prefix = event["s3_prefix"]
     chunks_key = f"{s3_prefix}{event['step_results']['chunking']['chunks_key']}"
 
     logger.info(f"Reading chunks from s3://{BUCKET_NAME}/{chunks_key}")
     response = s3_client.get_object(Bucket=BUCKET_NAME, Key=chunks_key)
-    chunks = json.loads(response["Body"].read().decode("utf-8"))
+    chunks_data = response["Body"].read().decode("utf-8")
+    chunks = json.loads(chunks_data)
 
     config = event.get("config", {})
 
-    # Build per-chunk input for the Map state
+    # Build per-chunk input for the Map state (Pass-by-reference)
+    # Each item in the Map will now just have the index and the key to the chunks file
     event["chunks_for_map"] = [
-        {"chunk": chunk, "config": config}
-        for chunk in chunks
+        {"chunk_index": i, "chunks_key": chunks_key, "s3_prefix": s3_prefix, "config": config}
+        for i in range(len(chunks))
     ]
 
-    logger.info(f"Prepared {len(chunks)} chunks for Map state")
+    logger.info(f"Prepared {len(chunks)} chunk references for Map state")
     return event

@@ -95,11 +95,36 @@ class AWSService:
             # Format logs for frontend
             logs = []
             for event in response.get("events", []):
+                etype = event["type"]
+                details = event.get(f"{etype[0].lower() + etype[1:]}EventDetails", {})
+                
+                # Extract meaningful label and summary
+                label = etype
+                summary = ""
+                
+                if "stateEnteredEventDetails" in event:
+                    label = f"Entered: {event['stateEnteredEventDetails'].get('name')}"
+                elif "stateExitedEventDetails" in event:
+                    label = f"Exited: {event['stateExitedEventDetails'].get('name')}"
+                elif etype.startswith("Task"):
+                    # For task events, try to find the state name in details if possible
+                    # or just keep it as TaskSucceeded etc.
+                    pass
+                
+                if "error" in details:
+                    summary = f"Error: {details.get('error')} - {details.get('cause')}"
+                elif "output" in details:
+                    # Truncate output for logs
+                    out_str = details.get("output", "")
+                    summary = (out_str[:100] + "..") if len(out_str) > 100 else out_str
+                
                 logs.append({
                     "timestamp": event["timestamp"].isoformat(),
-                    "type": event["type"],
+                    "type": etype,
                     "id": event["id"],
-                    "details": event.get(f"{event['type'][0].lower() + event['type'][1:]}EventDetails", {})
+                    "label": label,
+                    "summary": summary,
+                    "details": details
                 })
             return logs
         except ClientError as e:
@@ -205,16 +230,25 @@ Respond ONLY with a valid JSON object in this exact format:
 
     @staticmethod
     def get_execution_output(execution_arn: str) -> dict:
-        """Get the final output of a completed Step Functions execution."""
+        """Get the final output or error info of a Step Functions execution."""
         try:
             response = sfn_client.describe_execution(executionArn=execution_arn)
             status = response["status"]
             output = {}
+            error_info = None
+
             if status == "SUCCEEDED" and "output" in response:
                 output = json.loads(response["output"])
+            elif status in ("FAILED", "TIMED_OUT", "ABORTED"):
+                error_info = {
+                    "error": response.get("error", "UnknownError"),
+                    "cause": response.get("cause", "No cause provided by AWS.")
+                }
+
             return {
                 "status": status,
                 "output": output,
+                "error": error_info,
                 "start_date": response.get("startDate", "").isoformat() if response.get("startDate") else None,
                 "stop_date": response.get("stopDate", "").isoformat() if response.get("stopDate") else None,
             }

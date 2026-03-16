@@ -35,13 +35,16 @@ import re
 import os
 import logging
 import boto3
+import uuid
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
+BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "modifai-bucket")
 DEFAULT_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "apac.amazon.nova-micro-v1:0")
 
+s3_client = boto3.client("s3", region_name=AWS_REGION)
 bedrock_client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
 
@@ -125,8 +128,27 @@ Source Text:
 
 def handler(event, context):
     """Lambda entry point — processes one chunk, returns generated samples."""
-    chunk = event["chunk"]
+    chunk_index = event.get("chunk_index")
+    chunks_key = event.get("chunks_key")
     config = event.get("config", {})
+
+    # 1. Load chunk data
+    # If using pass-by-reference indices to avoid Step Functions payload limits
+    if chunk_index is not None and chunks_key:
+        try:
+            response = s3_client.get_object(Bucket=BUCKET_NAME, Key=chunks_key)
+            chunks = json.loads(response["Body"].read().decode("utf-8"))
+            chunk = chunks[chunk_index]
+        except Exception as e:
+            logger.error(f"Failed to fetch chunk {chunk_index} from S3: {e}")
+            return {"chunk_id": -1, "samples": [], "count": 0, "error": f"S3 fetch failed: {str(e)}"}
+    else:
+        # Fallback to direct chunk object in event
+        chunk = event.get("chunk", {})
+
+    if not chunk:
+        logger.error("No chunk data found in event or S3")
+        return {"chunk_id": -1, "samples": [], "count": 0, "error": "No chunk data found"}
 
     chunk_id = chunk["chunk_id"]
     chunk_text = chunk["text"]
@@ -156,9 +178,27 @@ def handler(event, context):
 
         logger.info(f"Generated {len(samples)} samples for chunk {chunk_id}")
 
-        return {
+        # NEW: Write results to S3 to avoid Map state output limit
+        s3_prefix = event.get("s3_prefix", "temp/")
+        result_filename = f"generation_results/result_{chunk_id}_{uuid.uuid4().hex[:8]}.json"
+        result_key = f"{s3_prefix}{result_filename}"
+        
+        result_body = {
             "chunk_id": chunk_id,
             "samples": samples,
+            "count": len(samples)
+        }
+        
+        s3_client.put_object(
+            Bucket=BUCKET_NAME,
+            Key=result_key,
+            Body=json.dumps(result_body, ensure_ascii=False),
+            ContentType="application/json"
+        )
+
+        return {
+            "chunk_id": chunk_id,
+            "result_key": result_key,
             "count": len(samples),
         }
 
@@ -166,7 +206,7 @@ def handler(event, context):
         logger.error(f"Failed to generate samples for chunk {chunk_id}: {e}")
         return {
             "chunk_id": chunk_id,
-            "samples": [],
+            "samples": [], # Keep for backward compatibility if collector isn't updated? No, collector will be.
             "count": 0,
             "error": str(e),
         }
