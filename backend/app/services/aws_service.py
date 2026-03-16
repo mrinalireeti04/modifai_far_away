@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 s3_client = boto3.client("s3")
-sfn_client = boto3.client("stepfunctions")
+sfn_client = boto3.client("stepfunctions", region_name="ap-south-1")
 bedrock_client = boto3.client("bedrock-runtime", region_name="ap-south-1")
 
 BUCKET_NAME = "modifai-bucket"
