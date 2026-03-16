@@ -12,9 +12,8 @@ import {
     AlertCircle,
     Circle,
 } from 'lucide-react'
-import { PIPELINE_STEPS } from '@/data/mockData'
 
-const stepIcons = [Upload, ScanText, Layers, Database, ShieldCheck, Brain, Rocket]
+const iconMap = { Upload, ScanText, Layers, Database, ShieldCheck, Brain, Rocket }
 
 const statusStyles = {
     complete: {
@@ -43,17 +42,17 @@ const statusStyles = {
     },
 }
 
-export default function PipelineTracker({ pipeline, activeStep, onStepClick }) {
+export default function PipelineTracker({ steps, pipeline, activeStep, onStepClick }) {
     return (
         <div className="w-full">
             {/* Horizontal tracker for md+ */}
             <div className="hidden md:flex items-start justify-between gap-0">
-                {PIPELINE_STEPS.map((step, i) => {
-                    const Icon = stepIcons[i]
+                {steps.map((step, i) => {
+                    const Icon = iconMap[step.icon] || Circle
                     const pStep = pipeline[i]
                     const style = statusStyles[pStep.status]
                     const isActive = activeStep === i
-                    const isLast = i === PIPELINE_STEPS.length - 1
+                    const isLast = i === steps.length - 1
 
                     return (
                         <div key={step.id} className="flex items-start flex-1 last:flex-none">
@@ -113,12 +112,12 @@ export default function PipelineTracker({ pipeline, activeStep, onStepClick }) {
 
             {/* Vertical tracker for mobile */}
             <div className="md:hidden space-y-0">
-                {PIPELINE_STEPS.map((step, i) => {
-                    const Icon = stepIcons[i]
+                {steps.map((step, i) => {
+                    const Icon = iconMap[step.icon] || Circle
                     const pStep = pipeline[i]
                     const style = statusStyles[pStep.status]
                     const isActive = activeStep === i
-                    const isLast = i === PIPELINE_STEPS.length - 1
+                    const isLast = i === steps.length - 1
 
                     return (
                         <div key={step.id} className="flex gap-3">

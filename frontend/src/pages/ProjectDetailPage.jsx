@@ -29,11 +29,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogClose,
+} from '@/components/ui/dialog'
 import PipelineTracker from '@/components/PipelineTracker'
-import { PIPELINE_STEPS } from '@/data/mockData'
+import { getStepsForMode } from '@/data/mockData'
 import { apiClient } from '@/api/client'
 
-const stepIcons = [Upload, ScanText, Layers, Database, ShieldCheck, Brain, Rocket]
+const stepIconMap = { Upload, ScanText, Layers, Database, ShieldCheck, Brain, Rocket }
 
 const statusConfig = {
     running: { label: 'Running', className: 'bg-blue-500/15 text-blue-400 border-blue-500/30', icon: Loader2 },
@@ -51,16 +61,65 @@ const stepDetails = {
     pending: { duration: '—', output: 'Waiting for previous steps to complete' },
 }
 
+// Build human-readable summary lines for each step's result data
+function buildStepSummary(stepName, data) {
+    if (!data || typeof data !== 'object') return []
+    const lines = []
+
+    switch (stepName) {
+        case 'upload':
+            if (data.raw_file_keys?.length) lines.push(`📁 ${data.raw_file_keys.length} file(s) uploaded`)
+            break
+        case 'ocr':
+            if (data.files_processed != null) lines.push(`📄 ${data.files_processed} file(s) processed`)
+            if (data.total_characters != null) lines.push(`✏️ ${data.total_characters.toLocaleString()} characters extracted`)
+            if (data.files_failed > 0) lines.push(`⚠️ ${data.files_failed} file(s) failed`)
+            if (data.errors?.length) {
+                data.errors.forEach(e => lines.push(`❌ ${e.file}: ${e.error}`))
+            }
+            break
+        case 'chunking':
+            if (data.chunk_count != null) lines.push(`🧩 ${data.chunk_count} chunks created`)
+            if (data.total_words != null) lines.push(`📝 ${data.total_words.toLocaleString()} total words`)
+            break
+        case 'generation':
+            if (data.example_count != null) lines.push(`🤖 ${data.example_count} training examples generated`)
+            if (data.chunks_processed != null) lines.push(`✅ ${data.chunks_processed} chunks processed`)
+            if (data.chunks_failed > 0) lines.push(`⚠️ ${data.chunks_failed} chunks failed`)
+            break
+        case 'quality_control':
+            if (data.total_input != null) lines.push(`📊 ${data.total_input} examples evaluated`)
+            if (data.kept != null) lines.push(`✅ ${data.kept} kept (above ${(data.threshold || 0.7) * 100}% threshold)`)
+            if (data.discarded > 0) lines.push(`🗑️ ${data.discarded} discarded`)
+            if (data.duplicates_removed > 0) lines.push(`♻️ ${data.duplicates_removed} duplicates removed`)
+            break
+        case 'fine_tuning':
+            if (data.job_name) lines.push(`🔧 Job: ${data.job_name}`)
+            if (data.duration_min) lines.push(`⏱️ ${data.duration_min} minutes`)
+            if (data.final_loss != null) lines.push(`📉 Final loss: ${data.final_loss}`)
+            break
+        case 'deployment':
+            if (data.endpoint_url) lines.push(`🚀 Endpoint: ${data.endpoint_url}`)
+            break
+        default:
+            // Generic: show any keys with values
+            Object.entries(data).forEach(([k, v]) => {
+                if (v != null && typeof v !== 'object') lines.push(`${k}: ${v}`)
+            })
+    }
+    return lines
+}
+
 export default function ProjectDetailPage() {
     const { id } = useParams()
     const navigate = useNavigate()
     const [project, setProject] = useState(null)
     const [pipelineStatus, setPipelineStatus] = useState('NOT_STARTED')
-    const [pipelineLogs, setPipelineLogs] = useState([])
     const [results, setResults] = useState(null)
     const [activeStep, setActiveStep] = useState(null)
     const [loading, setLoading] = useState(true)
     const [deleting, setDeleting] = useState(false)
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
     // ── Fetch project metadata ────────────────────────────────────────────────
     useEffect(() => {
@@ -90,32 +149,31 @@ export default function ProjectDetailPage() {
     useEffect(() => {
         if (!project) return
 
-        const checkStatusAndLogs = async () => {
+        const checkStatus = async () => {
             try {
                 const statusData = await apiClient.get(`projects/${id}/status`)
-                setPipelineStatus(statusData.pipeline_status || 'NOT_STARTED')
+                const rawStatus = statusData.pipeline_status || 'NOT_STARTED'
+                const normalizedStatus = rawStatus === 'COMPLETE' ? 'SUCCEEDED' : rawStatus
+                setPipelineStatus(normalizedStatus)
                 setProject(prev => ({ ...prev, status: statusData.project_status || prev.status }))
-
-                const logsData = await apiClient.get(`projects/${id}/logs`)
-                setPipelineLogs(logsData.logs || [])
             } catch (err) {
-                console.error("Status/logs error", err)
+                console.error("Status error", err)
             }
         }
 
-        checkStatusAndLogs()
+        checkStatus()
 
         let interval
         if (pipelineStatus === 'RUNNING') {
-            interval = setInterval(checkStatusAndLogs, 5000)
+            interval = setInterval(checkStatus, 5000)
         }
 
         return () => clearInterval(interval)
     }, [id, project?.id, pipelineStatus])
 
-    // ── Fetch results when pipeline succeeds ──────────────────────────────────
+    // ── Fetch results when pipeline finishes ──────────────────────────────────
     useEffect(() => {
-        if (pipelineStatus !== 'SUCCEEDED') return
+        if (pipelineStatus !== 'SUCCEEDED' && pipelineStatus !== 'FAILED') return
 
         const fetchResults = async () => {
             try {
@@ -130,18 +188,21 @@ export default function ProjectDetailPage() {
 
     // ── Delete project ────────────────────────────────────────────────────────
     const handleDelete = async () => {
-        if (!confirm('Are you sure you want to delete this project? This cannot be undone.')) return
         try {
             setDeleting(true)
             await apiClient.delete(`projects/${id}`)
+            setShowDeleteDialog(false)
             navigate('/projects')
         } catch (err) {
             console.error('Delete error:', err)
-            alert('Failed to delete project')
         } finally {
             setDeleting(false)
         }
     }
+
+    // ── Mode-based steps ────────────────────────────────────────────────────────
+    const modeSteps = getStepsForMode(project?.mode)
+    const stepCount = modeSteps.length
 
     // ── Derive pipeline progress array ────────────────────────────────────────
     const derivePipelineArr = () => {
@@ -150,16 +211,18 @@ export default function ProjectDetailPage() {
         const isSuc = pipelineStatus === 'SUCCEEDED'
         const isErr = pipelineStatus === 'FAILED'
 
-        for (let i = 0; i < 7; i++) {
+        for (let i = 0; i < stepCount; i++) {
             if (isSuc) {
                 arr.push({ step: i + 1, status: 'complete', progress: 100 })
             } else if (isErr) {
-                if (i === 3) arr.push({ step: i + 1, status: 'error', progress: 50 })
-                else if (i < 3) arr.push({ step: i + 1, status: 'complete', progress: 100 })
-                else arr.push({ step: i + 1, status: 'pending', progress: 0 })
+                // Mark the last step as error, previous as complete
+                if (i === stepCount - 1) arr.push({ step: i + 1, status: 'error', progress: 50 })
+                else arr.push({ step: i + 1, status: 'complete', progress: 100 })
             } else if (isRun) {
-                if (i < 3) arr.push({ step: i + 1, status: 'complete', progress: 100 })
-                else if (i === 3) arr.push({ step: i + 1, status: 'running', progress: 65 })
+                // Estimate: first half complete, middle running, rest pending
+                const mid = Math.floor(stepCount / 2)
+                if (i < mid) arr.push({ step: i + 1, status: 'complete', progress: 100 })
+                else if (i === mid) arr.push({ step: i + 1, status: 'running', progress: 65 })
                 else arr.push({ step: i + 1, status: 'pending', progress: 0 })
             } else {
                 arr.push({ step: i + 1, status: 'pending', progress: 0 })
@@ -188,11 +251,11 @@ export default function ProjectDetailPage() {
     const status = statusConfig[uiStatusKey] || statusConfig.pending
     const StatusIcon = status?.icon || Clock
     const completedSteps = pipelineArr.filter(s => s.status === 'complete').length
-    const overallProgress = Math.round((completedSteps / 7) * 100)
-    const displayStep = activeStep !== null ? activeStep : Math.min(completedSteps, 6)
+    const overallProgress = Math.round((completedSteps / stepCount) * 100)
+    const displayStep = activeStep !== null ? activeStep : Math.min(completedSteps, stepCount - 1)
     const currentPipelineStep = pipelineArr[displayStep] || { status: 'pending', progress: 0 }
-    const currentStepDef = PIPELINE_STEPS[displayStep]
-    const StepIcon = stepIcons[displayStep] || Circle
+    const currentStepDef = modeSteps[displayStep]
+    const StepIcon = stepIconMap[currentStepDef?.icon] || Circle
     const detail = stepDetails[currentPipelineStep.status] || stepDetails.pending
 
     const timeAgo = (dateStr) => {
@@ -262,16 +325,43 @@ export default function ProjectDetailPage() {
                             Compare Models
                         </Button>
                     )}
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 text-destructive hover:text-destructive"
-                        onClick={handleDelete}
-                        disabled={deleting}
-                    >
-                        {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        Delete
-                    </Button>
+                    <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 text-destructive hover:text-destructive"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Delete
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                            <DialogHeader>
+                                <DialogTitle>Delete Project</DialogTitle>
+                                <DialogDescription>
+                                    Are you sure you want to delete <span className="font-semibold text-foreground">{project.name}</span>? This will permanently remove the project, all uploaded files, and generated datasets. This action cannot be undone.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="gap-2 sm:gap-0">
+                                <DialogClose asChild>
+                                    <Button variant="outline" size="sm" disabled={deleting}>
+                                        Cancel
+                                    </Button>
+                                </DialogClose>
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="gap-1.5"
+                                    onClick={handleDelete}
+                                    disabled={deleting}
+                                >
+                                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                    {deleting ? 'Deleting...' : 'Delete Project'}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </div>
             </div>
 
@@ -300,7 +390,7 @@ export default function ProjectDetailPage() {
                 </div>
                 <div className="rounded-lg border border-border bg-card px-4 py-3">
                     <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Progress</p>
-                    <p className="text-sm font-semibold mt-1">{completedSteps}/7 steps ({overallProgress}%)</p>
+                    <p className="text-sm font-semibold mt-1">{completedSteps}/{stepCount} steps ({overallProgress}%)</p>
                 </div>
             </div>
 
@@ -311,6 +401,7 @@ export default function ProjectDetailPage() {
                 </CardHeader>
                 <CardContent>
                     <PipelineTracker
+                        steps={modeSteps}
                         pipeline={pipelineArr}
                         activeStep={displayStep}
                         onStepClick={setActiveStep}
@@ -464,47 +555,39 @@ export default function ProjectDetailPage() {
                 </Card>
             )}
 
-            {/* Execution Logs Viewer */}
-            {pipelineStatus !== 'NOT_STARTED' && (
+            {/* Step Results Panel */}
+            {results?.step_results && Object.keys(results.step_results).length > 0 && (
                 <Card className="border-border bg-card mt-6">
                     <CardHeader className="pb-3 border-b border-border bg-muted/20">
                         <CardTitle className="text-sm font-semibold flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
                             <Layers className="w-4 h-4" />
-                            AWS Step Functions Execution Logs
+                            Pipeline Step Results
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                        <div className="max-h-80 overflow-y-auto bg-[#0d1117] text-[#c9d1d9] p-4 font-mono text-xs rounded-b-lg">
-                            {pipelineLogs.length === 0 ? (
-                                <div className="text-center text-muted-foreground italic py-10">No logs yet or waiting for pipeline to start...</div>
-                            ) : (
-                                pipelineLogs.map(log => (
-                                    <div key={log.id} className="mb-2.5 last:mb-0 pb-2.5 border-b border-white/5 last:border-0 border-dashed">
-                                        <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 mb-1">
-                                            <span className="text-[#8b949e] shrink-0">
-                                                {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + new Date(log.timestamp).getMilliseconds().toString().padStart(3, '0')}
-                                            </span>
-                                            <span className={`font-semibold shrink-0 ${log.type.includes('Failed') ? 'text-[#ff7b72]' :
-                                                log.type.includes('Succeeded') ? 'text-[#3fb950]' :
-                                                    log.type.includes('Entered') ? 'text-[#58a6ff]' :
-                                                        log.type.includes('Started') ? 'text-[#a5d6ff]' :
-                                                            'text-[#d2a8ff]'
-                                                }`}>
-                                                [{log.type}]
-                                            </span>
-                                            <span className="text-[#79c0ff] truncate">
-                                                {log.details?.name || log.details?.stateName || log.details?.resourceType || log.type}
+                        <div className="divide-y divide-border">
+                            {Object.entries(results.step_results).map(([stepName, data]) => {
+                                const summaryLines = buildStepSummary(stepName, data)
+                                if (!summaryLines.length) return null
+                                const hasError = data?.errors?.length > 0 || data?.files_failed > 0
+                                return (
+                                    <div key={stepName} className="px-4 py-3 flex flex-col sm:flex-row sm:items-start gap-2">
+                                        <div className="flex items-center gap-2 min-w-[140px] shrink-0">
+                                            <div className={`w-2 h-2 rounded-full ${hasError ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                                {stepName.replace(/_/g, ' ')}
                                             </span>
                                         </div>
-                                        {(log.details?.error || log.details?.cause) && (
-                                            <div className="mt-1 pl-4 border-l-2 border-[#ff7b72]/50 text-[#ff7b72] whitespace-pre-wrap">
-                                                {log.details.error}
-                                                {log.details.cause && `\n${log.details.cause}`}
-                                            </div>
-                                        )}
+                                        <div className="text-xs text-foreground space-y-0.5">
+                                            {summaryLines.map((line, i) => (
+                                                <p key={i} className={line.startsWith('⚠') || line.startsWith('❌') ? 'text-amber-400' : ''}>
+                                                    {line}
+                                                </p>
+                                            ))}
+                                        </div>
                                     </div>
-                                ))
-                            )}
+                                )
+                            })}
                         </div>
                     </CardContent>
                 </Card>

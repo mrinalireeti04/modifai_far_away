@@ -16,7 +16,9 @@ if db_url and db_url.startswith("postgresql://"):
 engine = create_async_engine(
     db_url,
     echo=settings.DEBUG,
-    future=True
+    future=True,
+    pool_pre_ping=True,
+    pool_recycle=300,
 )
 
 async_session_maker = async_sessionmaker(

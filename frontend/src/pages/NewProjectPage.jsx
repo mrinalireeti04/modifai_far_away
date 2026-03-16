@@ -39,6 +39,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import FileUploadZone from '@/components/FileUploadZone'
 import { apiClient } from '@/api/client'
+import { extractTextSample, pickRandomFiles } from '@/utils/textExtractor'
 
 // ── Mode Definitions ──────────────────────────────────────────────────────────
 const MODES = [
@@ -175,7 +176,7 @@ export default function NewProjectPage() {
             case 'mode': return name.trim().length >= 3
             case 'intent': return intent && useCase.trim().length >= 10
             case 'upload': return files.length > 0
-            case 'evaluate': return evalScore !== null
+            case 'evaluate': return evalScore !== null || (evalExplanation !== null && !evaluating)
             case 'config': return !!model
             case 'review': return true
             default: return false
@@ -205,27 +206,47 @@ export default function NewProjectPage() {
         setEvalExplanation(null)
 
         try {
-            const file = files[0].file
-            const text = await new Promise((resolve, reject) => {
-                const reader = new FileReader()
-                reader.onload = (e) => resolve(e.target.result.substring(0, 2000))
-                reader.onerror = reject
-                reader.readAsText(file)
-            })
+            // Pick up to 3 random text-extractable files
+            const sampled = pickRandomFiles(files, 3)
 
-            setExtractedText(text.substring(0, 300) + '...')
+            const results = []
+            const previews = []
 
-            const result = await apiClient.post('evaluate/', {
-                text_sample: text,
-                intent: `${intent}: ${useCase}`,
-            })
+            for (const fileObj of sampled) {
+                try {
+                    const text = await extractTextSample(fileObj.file)
+                    previews.push(`[${fileObj.name}] ${text.substring(0, 100)}...`)
 
-            setEvalScore(result.score)
-            setEvalExplanation(result.explanation)
+                    const result = await apiClient.post('evaluate/', {
+                        text_sample: text,
+                        intent: `${intent}: ${useCase}`,
+                    })
+                    results.push({ name: fileObj.name, score: result.score, explanation: result.explanation })
+                } catch (fileErr) {
+                    // Skip files that fail extraction, log for debugging
+                    console.warn(`Skipped ${fileObj.name}:`, fileErr.message)
+                }
+            }
+
+            if (results.length === 0) {
+                throw new Error('Could not evaluate any of the sampled files. Try different file formats (.txt, .pdf, .docx).')
+            }
+
+            // Average the scores across all evaluated files
+            const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length
+
+            // Build a combined explanation
+            const explanation = results.length === 1
+                ? results[0].explanation
+                : `Averaged across ${results.length} sampled files (${results.map(r => `${r.name}: ${Math.round(r.score * 100)}%`).join(', ')}). ${results[results.length - 1].explanation}`
+
+            setEvalScore(avgScore)
+            setEvalExplanation(explanation)
+            setExtractedText(previews.join('\n\n'))
         } catch (error) {
             console.error("Evaluation error:", error)
-            setEvalExplanation("Failed to evaluate the dataset. You can proceed anyway.")
-            setEvalScore(0.5)
+            setEvalExplanation(error.message || "Failed to evaluate the dataset. You can proceed anyway.")
+            setEvalScore(null)
         } finally {
             setEvaluating(false)
         }
@@ -270,6 +291,7 @@ export default function NewProjectPage() {
                     samples_per_chunk: samplesPerChunk[0],
                     quality_threshold: qualityThreshold[0] / 100,
                 },
+                uploaded_filenames: files.map(f => f.name),
             })
 
             // 4. Navigate to the detail page
@@ -515,18 +537,18 @@ export default function NewProjectPage() {
                                     Data Quality Check
                                 </h2>
                                 <p className="text-sm text-muted-foreground">
-                                    We'll extract a sample from your files and evaluate if it's suitable for <span className="font-medium text-foreground">"{intent}"</span>
+                                    We'll randomly sample from your files and evaluate if the content is suitable for <span className="font-medium text-foreground">"{intent}"</span>
                                 </p>
                             </div>
 
-                            {!evalScore && !evaluating && (
+                            {!evalScore && !evaluating && !evalExplanation && (
                                 <div className="rounded-lg border border-dashed border-border p-8 text-center bg-muted/20">
                                     <div className="mx-auto w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
                                         <FileText className="w-6 h-6" />
                                     </div>
                                     <h3 className="font-semibold mb-1">Ready to Test</h3>
                                     <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
-                                        We'll extract ~2000 characters from {files[0]?.name} and ask Nova Micro to evaluate it.
+                                        We'll pick up to 3 random files, extract text from random sections, and ask Nova Micro to evaluate quality.
                                     </p>
                                     <Button onClick={handleEvaluate} className="w-full sm:w-auto gap-2">
                                         <Sparkles className="w-4 h-4" />
@@ -535,10 +557,31 @@ export default function NewProjectPage() {
                                 </div>
                             )}
 
+                            {!evalScore && !evaluating && evalExplanation && (
+                                <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-6 space-y-4">
+                                    <div className="flex items-start gap-3">
+                                        <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                                        <div className="space-y-1">
+                                            <h3 className="font-semibold text-red-500">Evaluation Failed</h3>
+                                            <p className="text-sm text-muted-foreground leading-relaxed">{evalExplanation}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" size="sm" onClick={handleEvaluate} className="gap-1.5">
+                                            <Sparkles className="w-3.5 h-3.5" />
+                                            Retry
+                                        </Button>
+                                        <Button variant="ghost" size="sm" onClick={() => setCurrentStep(currentStep + 1)} className="text-muted-foreground">
+                                            Skip evaluation →
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
                             {evaluating && (
                                 <div className="rounded-lg border border-border p-8 text-center bg-card shadow-sm">
                                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4" />
-                                    <p className="text-sm font-medium animate-pulse">Analyzing sample against intent...</p>
+                                    <p className="text-sm font-medium animate-pulse">Sampling random files & analyzing quality...</p>
                                 </div>
                             )}
 
@@ -582,8 +625,8 @@ export default function NewProjectPage() {
                                     </div>
 
                                     <div className="rounded-lg border border-border bg-muted/30 p-4">
-                                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Sample Extracted & Tested</p>
-                                        <p className="text-xs text-muted-foreground font-mono leading-relaxed bg-background/50 p-3 rounded border border-border/50">
+                                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Random Samples Extracted & Tested</p>
+                                        <p className="text-xs text-muted-foreground font-mono leading-relaxed bg-background/50 p-3 rounded border border-border/50 whitespace-pre-line">
                                             "{extractedText}"
                                         </p>
                                     </div>

@@ -47,7 +47,8 @@ class UploadUrlRes(BaseModel):
 
 
 class StartPipelineReq(BaseModel):
-    config: dict  # e.g., {"intent": "question-answering", "samples_per_chunk": 3, "quality_threshold": 0.5}
+    config: dict
+    uploaded_filenames: list[str] = []  # actual filenames the user uploaded
 
 
 class StartPipelineRes(BaseModel):
@@ -184,6 +185,7 @@ async def start_pipeline(project_id: str, req: StartPipelineReq, db: AsyncSessio
             s3_prefix=project.s3_prefix,
             mode=project.mode,
             config=req.config,
+            uploaded_filenames=req.uploaded_filenames,
         )
 
         project.execution_arn = execution_arn
@@ -205,7 +207,7 @@ async def get_project_status(project_id: str, db: AsyncSession = Depends(get_db)
     if project.status != ProjectStatus.RUNNING or not project.execution_arn:
         return ProjectStatusRes(
             project_status=project.status,
-            pipeline_status="NOT_STARTED" if project.status == ProjectStatus.PENDING else "COMPLETE",
+            pipeline_status="NOT_STARTED" if project.status == ProjectStatus.PENDING else "SUCCEEDED",
         )
 
     try:
@@ -243,6 +245,16 @@ async def get_project_results(project_id: str, db: AsyncSession = Depends(get_db
         if qc_result.get("clean_dataset_key"):
             dataset_key = f"{project.s3_prefix}{qc_result['clean_dataset_key']}"
             dataset_url = AWSService.generate_presigned_get_url(dataset_key)
+
+        # Fallback: try the default dataset path if step_results didn't include the key
+        if not dataset_url:
+            try:
+                # Verify the file actually exists before generating a URL
+                fallback_key = f"{project.s3_prefix}temp_processing/clean_dataset.jsonl"
+                s3_client.head_object(Bucket="modifai-bucket", Key=fallback_key)
+                dataset_url = AWSService.generate_presigned_get_url(fallback_key)
+            except Exception:
+                pass  # Dataset doesn't exist yet
 
         # Extract model endpoint URL if available
         model_endpoint = None

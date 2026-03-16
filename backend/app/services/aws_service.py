@@ -33,7 +33,7 @@ class AWSService:
             raise
 
     @staticmethod
-    def start_pipeline_execution(project_id: str, s3_prefix: str, mode: str, config: dict) -> str:
+    def start_pipeline_execution(project_id: str, s3_prefix: str, mode: str, config: dict, uploaded_filenames: list[str] = None) -> str:
         """Starts the Step Functions ModifaiPipeline state machine."""
         
         # Step Functions requires a specific input schema
@@ -45,12 +45,13 @@ class AWSService:
             "step_results": {}
         }
 
-        # If it's full or dataset mode, we need to pass the raw_file_keys in upload step
-        # For simplicity, we assume the frontend uploaded a file named "document.pdf" into the data/ folder.
-        # In a real app, the frontend would pass the exact filename(s) it uploaded.
+        # Pass the actual uploaded file keys so OCR/processing lambdas can find them
         if mode in ["dataset_only", "full", "dataset_and_finetune"]:
+            file_keys = [f"data/{name}" for name in (uploaded_filenames or [])]
+            if not file_keys:
+                file_keys = [f"data/document.pdf"]  # fallback
             execution_input["step_results"]["upload"] = {
-                "raw_file_keys": [f"data/document.pdf"]
+                "raw_file_keys": file_keys
             }
 
         execution_name = f"modifai-{project_id}-{uuid.uuid4().hex[:8]}"
@@ -169,7 +170,7 @@ Respond ONLY with a valid JSON object in this exact format:
     @staticmethod
     def get_generated_dataset(s3_prefix: str) -> list[dict]:
         """Fetch the final generated dataset (JSONL) from S3."""
-        object_key = f"{s3_prefix}clean_dataset.jsonl"
+        object_key = f"{s3_prefix}temp_processing/clean_dataset.jsonl"
         try:
             response = s3_client.get_object(Bucket=BUCKET_NAME, Key=object_key)
             content = response["Body"].read().decode("utf-8")
@@ -224,7 +225,7 @@ Respond ONLY with a valid JSON object in this exact format:
     @staticmethod
     def update_dataset_example(s3_prefix: str, example_id: int, data: dict) -> dict:
         """Update a single training example in the JSONL file on S3."""
-        object_key = f"{s3_prefix}clean_dataset.jsonl"
+        object_key = f"{s3_prefix}temp_processing/clean_dataset.jsonl"
         try:
             # Read the existing dataset
             response = s3_client.get_object(Bucket=BUCKET_NAME, Key=object_key)
@@ -254,7 +255,7 @@ Respond ONLY with a valid JSON object in this exact format:
     @staticmethod
     def delete_dataset_example(s3_prefix: str, example_id: int) -> bool:
         """Delete a single training example from the JSONL file on S3."""
-        object_key = f"{s3_prefix}clean_dataset.jsonl"
+        object_key = f"{s3_prefix}temp_processing/clean_dataset.jsonl"
         try:
             response = s3_client.get_object(Bucket=BUCKET_NAME, Key=object_key)
             content = response["Body"].read().decode("utf-8")
@@ -275,7 +276,7 @@ Respond ONLY with a valid JSON object in this exact format:
     @staticmethod
     def search_dataset(s3_prefix: str, query: str) -> list[dict]:
         """Search training examples by content (case-insensitive substring match)."""
-        object_key = f"{s3_prefix}clean_dataset.jsonl"
+        object_key = f"{s3_prefix}temp_processing/clean_dataset.jsonl"
         try:
             response = s3_client.get_object(Bucket=BUCKET_NAME, Key=object_key)
             content = response["Body"].read().decode("utf-8")
@@ -297,7 +298,7 @@ Respond ONLY with a valid JSON object in this exact format:
     @staticmethod
     def get_dataset_export_url(s3_prefix: str) -> str:
         """Generate a presigned GET URL for downloading the full JSONL dataset."""
-        object_key = f"{s3_prefix}clean_dataset.jsonl"
+        object_key = f"{s3_prefix}temp_processing/clean_dataset.jsonl"
         return AWSService.generate_presigned_get_url(object_key, expires_in=3600)
 
     @staticmethod
