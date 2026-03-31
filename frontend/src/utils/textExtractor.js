@@ -6,9 +6,11 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import mammoth from 'mammoth'
 
-// Point pdf.js at the bundled worker
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+// Point pdf.js to the bundled worker using Vite's native Web Worker support (?worker).
+// This forces Vite to output a standard .js chunk instead of .mjs, preventing
+// deployment servers from rejecting the script due to 'application/octet-stream' MIME issues.
+import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker'
+pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker()
 
 const SAMPLE_CHARS = 2000
 
