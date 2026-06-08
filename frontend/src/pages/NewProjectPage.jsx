@@ -21,23 +21,10 @@ import {
     Rocket,
     Brain,
     AlertCircle,
+    ChevronLeft
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
-import { Slider } from '@/components/ui/slider'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import FileUploadZone from '@/components/FileUploadZone'
+import SpotlightCard from '@/components/ui/SpotlightCard'
 import { apiClient } from '@/api/client'
 import { extractTextSample, pickRandomFiles } from '@/utils/textExtractor'
 
@@ -48,28 +35,24 @@ const MODES = [
         label: 'Dataset Only',
         icon: Database,
         desc: 'Generate a clean JSONL training dataset from your documents. No fine-tuning.',
-        steps: ['Intent', 'Upload', 'Evaluate', 'Config', 'Review'],
     },
     {
         value: 'finetune_only',
         label: 'Fine-Tune Only',
         icon: Brain,
         desc: 'Fine-tune a model on your existing JSONL dataset. Skip data generation.',
-        steps: ['Upload', 'Config', 'Review'],
     },
     {
         value: 'dataset_and_finetune',
         label: 'Dataset + Fine-Tune',
         icon: Zap,
         desc: 'Generate a dataset from documents and then fine-tune a model on it.',
-        steps: ['Intent', 'Upload', 'Evaluate', 'Config', 'Review'],
     },
     {
         value: 'full',
         label: 'Full Pipeline',
         icon: Rocket,
         desc: 'End-to-end: generate dataset → fine-tune → deploy as API endpoint.',
-        steps: ['Intent', 'Upload', 'Evaluate', 'Config', 'Review'],
     },
 ]
 
@@ -152,8 +135,8 @@ export default function NewProjectPage() {
     const [useCase, setUseCase] = useState('')
     const [files, setFiles] = useState([])
     const [model, setModel] = useState('llama-3.1-8b')
-    const [samplesPerChunk, setSamplesPerChunk] = useState([5])
-    const [qualityThreshold, setQualityThreshold] = useState([70])
+    const [samplesPerChunk, setSamplesPerChunk] = useState(5)
+    const [qualityThreshold, setQualityThreshold] = useState(70)
 
     // Evaluate Data Phase
     const [evaluating, setEvaluating] = useState(false)
@@ -183,7 +166,6 @@ export default function NewProjectPage() {
         }
     }
 
-    // Reset dependent state when mode changes
     const handleModeChange = (newMode) => {
         setMode(newMode)
         setCurrentStep(0) // Always go back to step 0 when mode changes
@@ -265,8 +247,8 @@ export default function NewProjectPage() {
                 intent: includesDataset ? intent : null,
                 base_model: model,
                 config: {
-                    samples_per_chunk: samplesPerChunk[0],
-                    quality_threshold: qualityThreshold[0] / 100,
+                    samples_per_chunk: samplesPerChunk,
+                    quality_threshold: qualityThreshold / 100,
                 },
             })
 
@@ -288,8 +270,8 @@ export default function NewProjectPage() {
             await apiClient.post(`projects/${project.id}/start`, {
                 config: {
                     intent: includesDataset ? `${intent}: ${useCase}` : undefined,
-                    samples_per_chunk: samplesPerChunk[0],
-                    quality_threshold: qualityThreshold[0] / 100,
+                    samples_per_chunk: samplesPerChunk,
+                    quality_threshold: qualityThreshold / 100,
                 },
                 uploaded_filenames: files.map(f => f.name),
             })
@@ -305,141 +287,141 @@ export default function NewProjectPage() {
         }
     }
 
-    // ── Render ─────────────────────────────────────────────────────────────────
     return (
-        <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-8">
-            {/* Header */}
-            <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
-                    <ArrowLeft className="w-4 h-4" />
-                </Button>
-                <div>
-                    <h1 className="text-2xl font-bold">Create New Project</h1>
-                    <p className="text-sm text-muted-foreground">Set up your data-to-model pipeline</p>
+        <div className="min-h-screen bg-canvas-soft font-sans selection:bg-ink selection:text-canvas pb-24">
+            <div className="max-w-[800px] mx-auto px-4 md:px-6 py-12 md:py-16 space-y-8">
+                
+                {/* Header */}
+                <div className="flex items-start gap-4">
+                    <button 
+                        onClick={() => navigate(-1)}
+                        className="w-10 h-10 rounded-full border border-hairline bg-canvas flex items-center justify-center text-body hover:text-ink hover:border-hairline-strong transition-colors shrink-0 mt-1"
+                    >
+                        <ArrowLeft className="w-5 h-5" strokeWidth={1.5} />
+                    </button>
+                    <div>
+                        <h1 className="text-[32px] leading-[40px] font-semibold tracking-[-1.28px] text-ink">
+                            Create New Project
+                        </h1>
+                        <p className="text-[16px] leading-[24px] text-body mt-1">
+                            Set up your data-to-model pipeline.
+                        </p>
+                    </div>
                 </div>
-            </div>
 
-            {/* Stepper */}
-            <div className="flex items-center gap-0 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-                {steps.map((step, i) => {
-                    const Icon = step.icon
-                    const isCompleted = i < currentStep
-                    const isActive = i === currentStep
-                    const isFuture = i > currentStep
+                {/* Vercel-style Stepper */}
+                <div className="flex items-center gap-0 overflow-x-auto pb-4 scrollbar-hide">
+                    {steps.map((step, i) => {
+                        const isCompleted = i < currentStep
+                        const isActive = i === currentStep
+                        const isFuture = i > currentStep
 
-                    return (
-                        <React.Fragment key={step.id}>
-                            <button
-                                onClick={() => i < currentStep && setCurrentStep(i)}
-                                disabled={isFuture}
-                                className={`
-                                    flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
-                                    transition-all duration-200 shrink-0
-                                    ${isActive
-                                        ? 'bg-primary/15 text-primary'
-                                        : isCompleted
-                                            ? 'text-primary/70 hover:bg-primary/10 cursor-pointer'
-                                            : 'text-muted-foreground cursor-default'
-                                    }
-                                `}
-                            >
-                                <div className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold border transition-all duration-200 ${isActive
-                                    ? 'bg-primary text-primary-foreground border-primary'
-                                    : isCompleted
-                                        ? 'bg-primary/20 text-primary border-primary/30'
-                                        : 'border-border text-muted-foreground'
-                                    }`}>
-                                    {isCompleted ? <Check className="w-3.5 h-3.5" /> : i + 1}
-                                </div>
-                                <span className={isActive ? 'inline' : 'hidden md:inline'}>{step.label}</span>
-                            </button>
-                            {i < steps.length - 1 && (
-                                <div className={`w-8 sm:flex-1 h-px mx-1 transition-colors duration-300 ${i < currentStep ? 'bg-primary/40' : 'bg-border'
-                                    }`} />
-                            )}
-                        </React.Fragment>
-                    )
-                })}
-            </div>
-
-            {/* Step Content */}
-            <Card className="border-border bg-card">
-                <CardContent className="p-6 overflow-hidden">
-
-                    {/* ── Step: Mode Selection ───────────────────────────────── */}
-                    {currentStepId === 'mode' && (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="space-y-1">
-                                <h2 className="text-lg font-semibold">Pipeline Mode & Project Info</h2>
-                                <p className="text-sm text-muted-foreground">Choose what the platform should do and give your project a name</p>
-                            </div>
-
-                            {/* Project name */}
-                            <div className="space-y-2">
-                                <Label htmlFor="name">Project Name *</Label>
-                                <Input
-                                    id="name"
-                                    placeholder="e.g. Customer Support Bot"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    className="bg-background"
-                                />
-                                {name.length > 0 && name.length < 3 && (
-                                    <p className="text-xs text-destructive">Name must be at least 3 characters</p>
+                        return (
+                            <React.Fragment key={step.id}>
+                                <button
+                                    onClick={() => i < currentStep && setCurrentStep(i)}
+                                    disabled={isFuture}
+                                    className={`
+                                        flex flex-col gap-2 relative transition-all duration-200 group shrink-0
+                                        ${isActive ? 'cursor-default' : isCompleted ? 'cursor-pointer' : 'cursor-default opacity-50'}
+                                    `}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`
+                                            w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition-colors
+                                            ${isActive ? 'bg-ink border-ink text-canvas' : 
+                                              isCompleted ? 'bg-ink border-ink text-canvas' : 
+                                              'bg-canvas border-hairline text-mute'}
+                                        `}>
+                                            {isCompleted ? <Check className="w-3.5 h-3.5" strokeWidth={2.5} /> : i + 1}
+                                        </div>
+                                        <span className={`font-mono text-[12px] uppercase tracking-wider ${isActive ? 'text-ink font-semibold' : 'text-mute'}`}>
+                                            {step.label}
+                                        </span>
+                                    </div>
+                                </button>
+                                {i < steps.length - 1 && (
+                                    <div className={`w-8 sm:flex-1 h-[1px] mx-4 transition-colors duration-300 ${isCompleted ? 'bg-ink' : 'bg-hairline'}`} />
                                 )}
+                            </React.Fragment>
+                        )
+                    })}
+                </div>
+
+                {/* Step Content Container */}
+                <div className="bg-canvas rounded-[12px] border border-hairline shadow-[0px_1px_1px_#00000005,0px_2px_2px_#0000000a] p-8 md:p-10">
+                    
+                    {/* ── Step 1: Mode Selection ── */}
+                    {currentStepId === 'mode' && (
+                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="space-y-6">
+                                <div className="space-y-2">
+                                    <label htmlFor="name" className="block text-[14px] font-medium text-ink">Project Name</label>
+                                    <input
+                                        id="name"
+                                        type="text"
+                                        placeholder="e.g. Customer Support Bot"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        className="w-full h-10 px-3 bg-canvas border border-hairline rounded-[6px] text-[14px] text-ink focus:outline-none focus:ring-1 focus:ring-[#171717] focus:border-ink transition-all placeholder:text-mute"
+                                    />
+                                    {name.length > 0 && name.length < 3 && (
+                                        <p className="text-[12px] text-[#ee0000]">Name must be at least 3 characters</p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label htmlFor="desc" className="block text-[14px] font-medium text-ink">Description <span className="text-mute font-normal">(Optional)</span></label>
+                                    <textarea
+                                        id="desc"
+                                        placeholder="Briefly describe your project"
+                                        value={description}
+                                        onChange={(e) => setDescription(e.target.value)}
+                                        rows={2}
+                                        className="w-full p-3 bg-canvas border border-hairline rounded-[6px] text-[14px] text-ink focus:outline-none focus:ring-1 focus:ring-[#171717] focus:border-ink transition-all resize-none placeholder:text-mute"
+                                    />
+                                </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="desc">Description</Label>
-                                <Textarea
-                                    id="desc"
-                                    placeholder="Briefly describe your project"
-                                    value={description}
-                                    onChange={(e) => setDescription(e.target.value)}
-                                    rows={2}
-                                    className="bg-background resize-none"
-                                />
-                            </div>
+                            <div className="w-full h-[1px] bg-hairline" />
 
-                            <Separator className="my-2" />
-
-                            {/* Mode cards */}
-                            <div className="space-y-3">
-                                <Label>Pipeline Mode</Label>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="space-y-4">
+                                <label className="block text-[14px] font-medium text-ink">Pipeline Mode</label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {MODES.map((m) => {
                                         const ModeIcon = m.icon
+                                        const isSelected = mode === m.value
                                         return (
-                                            <label
+                                            <SpotlightCard
                                                 key={m.value}
                                                 className={`
-                                                    relative flex cursor-pointer rounded-lg border p-4 shadow-sm
-                                                    hover:border-primary focus:outline-none transition-all
-                                                    ${mode === m.value
-                                                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                                                        : 'border-border bg-card'
+                                                    relative flex cursor-pointer rounded-[8px] border transition-all
+                                                    ${isSelected
+                                                        ? 'border-ink bg-canvas-soft ring-1 ring-[#171717]'
+                                                        : 'border-hairline bg-canvas hover:border-hairline-strong'
                                                     }
                                                 `}
                                             >
-                                                <input
-                                                    type="radio"
-                                                    name="mode"
-                                                    value={m.value}
-                                                    className="sr-only"
-                                                    onChange={() => handleModeChange(m.value)}
-                                                    checked={mode === m.value}
-                                                />
-                                                <div className="flex items-start gap-3">
-                                                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${mode === m.value ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                                                        }`}>
-                                                        <ModeIcon className="w-4.5 h-4.5" />
+                                                <label className="w-full p-5 flex cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="mode"
+                                                        value={m.value}
+                                                        className="sr-only"
+                                                        onChange={() => handleModeChange(m.value)}
+                                                        checked={isSelected}
+                                                    />
+                                                    <div className="flex items-start gap-4">
+                                                        <div className={`w-10 h-10 rounded-full border flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-ink border-ink text-canvas' : 'bg-canvas-soft border-hairline text-ink'}`}>
+                                                            <ModeIcon className="w-4.5 h-4.5" strokeWidth={1.5} />
+                                                        </div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="block text-[14px] font-medium text-ink">{m.label}</span>
+                                                            <span className="block text-[14px] leading-[20px] text-body">{m.desc}</span>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="block text-sm font-medium">{m.label}</span>
-                                                        <span className="block text-xs text-muted-foreground mt-1">{m.desc}</span>
-                                                    </div>
-                                                </div>
-                                            </label>
+                                                </label>
+                                            </SpotlightCard>
                                         )
                                     })}
                                 </div>
@@ -447,80 +429,77 @@ export default function NewProjectPage() {
                         </div>
                     )}
 
-                    {/* ── Step: Intent Selection ─────────────────────────────── */}
+                    {/* ── Step 2: Intent Selection ── */}
                     {currentStepId === 'intent' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
-                            <div className="space-y-1">
-                                <h2 className="text-lg font-semibold">Intent & Use Case</h2>
-                                <p className="text-sm text-muted-foreground">Select what task your model should perform and describe your use case</p>
+                        <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
+                            <div className="space-y-4">
+                                <label className="block text-[14px] font-medium text-ink">Intent</label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {INTENTS.map((item) => {
+                                        const IntentIcon = item.icon
+                                        const isSelected = intent === item.value
+                                        return (
+                                            <SpotlightCard
+                                                key={item.value}
+                                                className={`
+                                                    relative flex flex-col items-start cursor-pointer rounded-[8px] border transition-all
+                                                    ${isSelected
+                                                        ? 'border-ink bg-canvas-soft ring-1 ring-[#171717]'
+                                                        : 'border-hairline bg-canvas hover:border-hairline-strong'
+                                                    }
+                                                `}
+                                            >
+                                                <label className="w-full p-5 flex flex-col items-start cursor-pointer gap-4">
+                                                    <input
+                                                        type="radio"
+                                                        name="intent"
+                                                        value={item.value}
+                                                        className="sr-only"
+                                                        onChange={() => setIntent(item.value)}
+                                                        checked={isSelected}
+                                                    />
+                                                    <div className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${isSelected ? 'bg-ink border-ink text-canvas' : 'bg-canvas-soft border-hairline text-ink'}`}>
+                                                        <IntentIcon className="w-5 h-5" strokeWidth={1.5} />
+                                                    </div>
+                                                    <div>
+                                                        <span className="block text-[14px] font-medium text-ink mb-1">{item.label}</span>
+                                                        <span className="block text-[12px] leading-[18px] text-body">{item.desc}</span>
+                                                    </div>
+                                                </label>
+                                            </SpotlightCard>
+                                        )
+                                    })}
+                                </div>
                             </div>
 
-                            {/* Intent cards */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                {INTENTS.map((item) => {
-                                    const IntentIcon = item.icon
-                                    return (
-                                        <label
-                                            key={item.value}
-                                            className={`
-                                                relative flex cursor-pointer rounded-lg border p-4 shadow-sm
-                                                hover:border-primary focus:outline-none transition-all
-                                                ${intent === item.value
-                                                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                                                    : 'border-border bg-card'
-                                                }
-                                            `}
-                                        >
-                                            <input
-                                                type="radio"
-                                                name="intent"
-                                                value={item.value}
-                                                className="sr-only"
-                                                onChange={() => setIntent(item.value)}
-                                                checked={intent === item.value}
-                                            />
-                                            <div className="flex flex-col items-center text-center gap-2">
-                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${intent === item.value ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                                                    }`}>
-                                                    <IntentIcon className="w-5 h-5" />
-                                                </div>
-                                                <span className="text-sm font-medium">{item.label}</span>
-                                                <span className="text-xs text-muted-foreground">{item.desc}</span>
-                                            </div>
-                                        </label>
-                                    )
-                                })}
-                            </div>
+                            <div className="w-full h-[1px] bg-hairline" />
 
-                            <Separator />
-
-                            {/* Use-case description */}
                             <div className="space-y-2">
-                                <Label htmlFor="usecase">Use-Case Description *</Label>
-                                <Textarea
+                                <label htmlFor="usecase" className="block text-[14px] font-medium text-ink">Use-Case Description</label>
+                                <textarea
                                     id="usecase"
                                     placeholder="Describe how you intend to use the fine-tuned model. This guides the LLM to generate relevant training examples."
                                     value={useCase}
                                     onChange={(e) => setUseCase(e.target.value)}
                                     rows={3}
-                                    className="bg-background resize-none"
+                                    className="w-full p-3 bg-canvas border border-hairline rounded-[6px] text-[14px] text-ink focus:outline-none focus:ring-1 focus:ring-[#171717] focus:border-ink transition-all resize-none placeholder:text-mute"
                                 />
                                 {useCase.length > 0 && useCase.length < 10 && (
-                                    <p className="text-xs text-destructive">Description must be at least 10 characters</p>
+                                    <p className="text-[12px] text-[#ee0000]">Description must be at least 10 characters</p>
                                 )}
                             </div>
                         </div>
                     )}
 
-                    {/* ── Step: Upload Files ──────────────────────────────────── */}
+                    {/* ── Step 3: Upload Files ── */}
                     {currentStepId === 'upload' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
-                            <div className="space-y-1">
-                                <h2 className="text-lg font-semibold">Upload Your Data</h2>
-                                <p className="text-sm text-muted-foreground">
+                        <div className="animate-in slide-in-from-right-8 duration-500">
+                            <div className="mb-6">
+                                <h2 className="text-[18px] font-semibold text-ink">Upload Your Data</h2>
+                                <p className="text-[14px] text-body">
                                     {mode === 'finetune_only'
-                                        ? 'Upload your JSONL training dataset file'
-                                        : 'Upload the documents you want to use for training data generation'
+                                        ? 'Upload your JSONL training dataset file.'
+                                        : 'Upload the documents you want to use for training data generation.'
                                     }
                                 </p>
                             </div>
@@ -528,106 +507,119 @@ export default function NewProjectPage() {
                         </div>
                     )}
 
-                    {/* ── Step: Data Evaluation ───────────────────────────────── */}
+                    {/* ── Step 4: Data Evaluation ── */}
                     {currentStepId === 'evaluate' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
+                        <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
                             <div className="space-y-1">
-                                <h2 className="text-lg font-semibold flex items-center gap-2">
-                                    <Sparkles className="w-5 h-5 text-primary" />
+                                <h2 className="text-[18px] font-semibold text-ink flex items-center gap-2">
+                                    <Sparkles className="w-5 h-5 text-ink" />
                                     Data Quality Check
                                 </h2>
-                                <p className="text-sm text-muted-foreground">
-                                    We'll randomly sample from your files and evaluate if the content is suitable for <span className="font-medium text-foreground">"{intent}"</span>
+                                <p className="text-[14px] text-body">
+                                    We'll randomly sample from your files and evaluate if the content is suitable for <span className="font-medium text-ink">"{intent}"</span>.
                                 </p>
                             </div>
 
                             {!evalScore && !evaluating && !evalExplanation && (
-                                <div className="rounded-lg border border-dashed border-border p-8 text-center bg-muted/20">
-                                    <div className="mx-auto w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
-                                        <FileText className="w-6 h-6" />
+                                <div className="rounded-[8px] border border-dashed border-hairline p-12 text-center bg-canvas-soft">
+                                    <div className="mx-auto w-12 h-12 border border-hairline bg-canvas rounded-full flex items-center justify-center mb-4">
+                                        <FileText className="w-5 h-5 text-ink" strokeWidth={1.5} />
                                     </div>
-                                    <h3 className="font-semibold mb-1">Ready to Test</h3>
-                                    <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
+                                    <h3 className="text-[16px] font-semibold text-ink mb-2">Ready to Test</h3>
+                                    <p className="text-[14px] text-body mb-6 max-w-sm mx-auto">
                                         We'll pick up to 3 random files, extract text from random sections, and ask Nova Micro to evaluate quality.
                                     </p>
-                                    <Button onClick={handleEvaluate} className="w-full sm:w-auto gap-2">
+                                    <button 
+                                        onClick={handleEvaluate} 
+                                        className="bg-ink text-canvas px-6 h-10 rounded-full text-[14px] font-medium hover:bg-ink/90 transition-colors flex items-center gap-2 mx-auto"
+                                    >
                                         <Sparkles className="w-4 h-4" />
                                         Run Automated Evaluation
-                                    </Button>
+                                    </button>
                                 </div>
                             )}
 
                             {!evalScore && !evaluating && evalExplanation && (
-                                <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-6 space-y-4">
+                                <div className="rounded-[8px] border border-[#f7d4d6] bg-[#f7d4d6]/30 p-6 space-y-4">
                                     <div className="flex items-start gap-3">
-                                        <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                                        <AlertCircle className="w-5 h-5 text-[#ee0000] shrink-0 mt-0.5" />
                                         <div className="space-y-1">
-                                            <h3 className="font-semibold text-red-500">Evaluation Failed</h3>
-                                            <p className="text-sm text-muted-foreground leading-relaxed">{evalExplanation}</p>
+                                            <h3 className="font-semibold text-[#ee0000]">Evaluation Failed</h3>
+                                            <p className="text-[14px] text-body leading-relaxed">{evalExplanation}</p>
                                         </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <Button variant="outline" size="sm" onClick={handleEvaluate} className="gap-1.5">
+                                    <div className="flex gap-3">
+                                        <button 
+                                            onClick={handleEvaluate} 
+                                            className="bg-canvas border border-hairline text-ink px-4 h-8 rounded-full text-[12px] font-medium hover:bg-canvas-soft transition-colors flex items-center gap-2"
+                                        >
                                             <Sparkles className="w-3.5 h-3.5" />
                                             Retry
-                                        </Button>
-                                        <Button variant="ghost" size="sm" onClick={() => setCurrentStep(currentStep + 1)} className="text-muted-foreground">
+                                        </button>
+                                        <button 
+                                            onClick={() => setCurrentStep(currentStep + 1)} 
+                                            className="text-[12px] font-medium text-mute hover:text-ink transition-colors"
+                                        >
                                             Skip evaluation →
-                                        </Button>
+                                        </button>
                                     </div>
                                 </div>
                             )}
 
                             {evaluating && (
-                                <div className="rounded-lg border border-border p-8 text-center bg-card shadow-sm">
-                                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4" />
-                                    <p className="text-sm font-medium animate-pulse">Sampling random files & analyzing quality...</p>
+                                <div className="rounded-[8px] border border-hairline p-12 text-center bg-canvas shadow-[0px_1px_1px_#00000005]">
+                                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-hairline border-t-[#171717] mb-6" />
+                                    <p className="text-[14px] font-medium text-ink animate-pulse">Sampling random files & analyzing quality...</p>
                                 </div>
                             )}
 
                             {evalScore !== null && !evaluating && (
-                                <div className="space-y-4">
-                                    <div className={`rounded-lg border p-6 transition-all shadow-sm ${evalScore > 0.6 ? 'border-emerald-500/30 bg-emerald-500/5' :
-                                        evalScore > 0.4 ? 'border-amber-500/30 bg-amber-500/5' :
-                                            'border-red-500/30 bg-red-500/5'
-                                        }`}>
-                                        <div className="flex flex-col sm:flex-row items-center gap-6">
+                                <div className="space-y-6">
+                                    <div className={`rounded-[8px] border p-8 transition-all shadow-[0px_1px_1px_#00000005] bg-canvas ${
+                                        evalScore > 0.6 ? 'border-hairline' :
+                                        evalScore > 0.4 ? 'border-[#f5a623]' : 'border-[#ee0000]'
+                                    }`}>
+                                        <div className="flex flex-col sm:flex-row items-center gap-8">
                                             <div className="relative shrink-0">
                                                 <svg className="w-24 h-24 transform -rotate-90">
-                                                    <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-muted/30" />
+                                                    <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-[#fafafa] border-hairline" />
                                                     <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent"
                                                         strokeDasharray={40 * 2 * Math.PI}
                                                         strokeDashoffset={40 * 2 * Math.PI * (1 - evalScore)}
-                                                        className={`transition-all duration-1000 ease-out ${evalScore > 0.6 ? 'text-emerald-500' :
-                                                            evalScore > 0.4 ? 'text-amber-500' : 'text-red-500'
-                                                            }`}
+                                                        className={`transition-all duration-1000 ease-out ${
+                                                            evalScore > 0.6 ? 'text-[#0070f3]' :
+                                                            evalScore > 0.4 ? 'text-[#f5a623]' : 'text-[#ee0000]'
+                                                        }`}
                                                     />
                                                 </svg>
                                                 <div className="absolute inset-0 flex items-center justify-center">
-                                                    <span className="text-xl font-bold">{Math.round(evalScore * 100)}%</span>
+                                                    <span className="text-[20px] font-semibold text-ink">{Math.round(evalScore * 100)}%</span>
                                                 </div>
                                             </div>
-                                            <div className="space-y-2 text-center sm:text-left">
-                                                <h3 className="font-semibold text-lg flex items-center justify-center sm:justify-start gap-2">
-                                                    {evalScore > 0.6 ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : null}
+                                            <div className="space-y-3 text-center sm:text-left">
+                                                <h3 className="font-semibold text-[18px] text-ink flex items-center justify-center sm:justify-start gap-2">
+                                                    {evalScore > 0.6 && <CheckCircle2 className="w-5 h-5 text-[#0070f3]" />}
                                                     {evalScore > 0.6 ? 'High Quality' : evalScore > 0.4 ? 'Acceptable Quality' : 'Low Quality'}
                                                 </h3>
-                                                <p className="text-sm text-muted-foreground leading-relaxed">
+                                                <p className="text-[14px] text-body leading-relaxed">
                                                     {evalExplanation}
                                                 </p>
                                                 {evalScore < 0.6 && (
-                                                    <Button variant="outline" size="sm" onClick={handleEvaluate} className="mt-2 text-xs h-8">
+                                                    <button 
+                                                        onClick={handleEvaluate} 
+                                                        className="mt-2 bg-canvas border border-hairline text-ink px-4 h-8 rounded-full text-[12px] font-medium hover:bg-canvas-soft transition-colors"
+                                                    >
                                                         Retest another sample
-                                                    </Button>
+                                                    </button>
                                                 )}
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div className="rounded-lg border border-border bg-muted/30 p-4">
-                                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Random Samples Extracted & Tested</p>
-                                        <p className="text-xs text-muted-foreground font-mono leading-relaxed bg-background/50 p-3 rounded border border-border/50 whitespace-pre-line">
-                                            "{extractedText}"
+                                    <div className="rounded-[8px] border border-hairline bg-canvas-soft p-6">
+                                        <p className="font-mono text-[10px] uppercase tracking-wider text-mute mb-3">Random Samples Extracted & Tested</p>
+                                        <p className="font-mono text-[12px] text-body leading-relaxed bg-canvas p-4 rounded-[6px] border border-hairline whitespace-pre-line max-h-64 overflow-y-auto">
+                                            {extractedText}
                                         </p>
                                     </div>
                                 </div>
@@ -635,73 +627,70 @@ export default function NewProjectPage() {
                         </div>
                     )}
 
-                    {/* ── Step: Configuration ─────────────────────────────────── */}
+                    {/* ── Step 5: Configuration ── */}
                     {currentStepId === 'config' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
+                        <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
                             <div className="space-y-1">
-                                <h2 className="text-lg font-semibold">Pipeline Configuration</h2>
-                                <p className="text-sm text-muted-foreground">Configure how the pipeline processes your data</p>
+                                <h2 className="text-[18px] font-semibold text-ink">Pipeline Configuration</h2>
+                                <p className="text-[14px] text-body">Configure how the pipeline processes your data</p>
                             </div>
 
-                            <div className="space-y-6">
-                                {/* Model selection — show for modes that include fine-tuning */}
+                            <div className="space-y-8">
                                 {includesFineTune && (
                                     <>
-                                        <div className="space-y-2">
-                                            <Label>Base Model</Label>
-                                            <Select value={model} onValueChange={setModel}>
-                                                <SelectTrigger className="bg-background">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {MODELS.map(m => (
-                                                        <SelectItem key={m.value} value={m.value}>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="font-medium">{m.label}</span>
-                                                                <span className="text-xs text-muted-foreground">— {m.desc}</span>
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                        <div className="space-y-3">
+                                            <label className="block text-[14px] font-medium text-ink">Base Model</label>
+                                            <select 
+                                                value={model} 
+                                                onChange={(e) => setModel(e.target.value)}
+                                                className="w-full h-10 px-3 bg-canvas border border-hairline rounded-[6px] text-[14px] text-ink focus:outline-none focus:ring-1 focus:ring-[#171717] focus:border-ink appearance-none"
+                                                style={{ backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23171717%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px' }}
+                                            >
+                                                {MODELS.map(m => (
+                                                    <option key={m.value} value={m.value}>{m.label} — {m.desc}</option>
+                                                ))}
+                                            </select>
                                         </div>
-                                        <Separator />
+                                        {includesDataset && <div className="w-full h-[1px] bg-hairline" />}
                                     </>
                                 )}
 
-                                {/* Dataset config — show for modes that include dataset generation */}
                                 {includesDataset && (
                                     <>
-                                        <div className="space-y-3">
+                                        <div className="space-y-4">
                                             <div className="flex items-center justify-between">
-                                                <Label>Samples per Chunk</Label>
-                                                <Badge variant="secondary" className="text-xs font-mono">{samplesPerChunk[0]}</Badge>
+                                                <label className="text-[14px] font-medium text-ink">Samples per Chunk</label>
+                                                <div className="font-mono text-[12px] bg-canvas-soft border border-hairline px-2 py-0.5 rounded-md text-ink">{samplesPerChunk}</div>
                                             </div>
-                                            <Slider
+                                            <input
+                                                type="range"
                                                 value={samplesPerChunk}
-                                                onValueChange={setSamplesPerChunk}
+                                                onChange={(e) => setSamplesPerChunk(parseInt(e.target.value))}
                                                 min={1} max={20} step={1}
-                                                className="w-full"
+                                                className="w-full accent-[#171717]"
+                                                style={{ '--value': `${((samplesPerChunk - 1) / 19) * 100}%` }}
                                             />
-                                            <p className="text-xs text-muted-foreground">
+                                            <p className="text-[14px] text-mute">
                                                 Number of synthetic training samples generated per text chunk.
                                             </p>
                                         </div>
 
-                                        <Separator />
+                                        <div className="w-full h-[1px] bg-hairline" />
 
-                                        <div className="space-y-3">
+                                        <div className="space-y-4">
                                             <div className="flex items-center justify-between">
-                                                <Label>Quality Threshold</Label>
-                                                <Badge variant="secondary" className="text-xs font-mono">{qualityThreshold[0]}%</Badge>
+                                                <label className="text-[14px] font-medium text-ink">Quality Threshold</label>
+                                                <div className="font-mono text-[12px] bg-canvas-soft border border-hairline px-2 py-0.5 rounded-md text-ink">{qualityThreshold}%</div>
                                             </div>
-                                            <Slider
+                                            <input
+                                                type="range"
                                                 value={qualityThreshold}
-                                                onValueChange={setQualityThreshold}
+                                                onChange={(e) => setQualityThreshold(parseInt(e.target.value))}
                                                 min={0} max={100} step={5}
-                                                className="w-full"
+                                                className="w-full accent-[#171717]"
+                                                style={{ '--value': `${qualityThreshold}%` }}
                                             />
-                                            <p className="text-xs text-muted-foreground">
+                                            <p className="text-[14px] text-mute">
                                                 Minimum confidence score. Higher = stricter quality, fewer samples.
                                             </p>
                                         </div>
@@ -711,129 +700,124 @@ export default function NewProjectPage() {
                         </div>
                     )}
 
-                    {/* ── Step: Review & Start ────────────────────────────────── */}
+                    {/* ── Step 6: Review & Start ── */}
                     {currentStepId === 'review' && (
-                        <div className="space-y-6 animate-in slide-in-from-right-8 duration-500">
+                        <div className="space-y-8 animate-in slide-in-from-right-8 duration-500">
                             <div className="space-y-1">
-                                <h2 className="text-lg font-semibold">Review & Start Pipeline</h2>
-                                <p className="text-sm text-muted-foreground">Verify your project settings before kicking off the pipeline</p>
+                                <h2 className="text-[18px] font-semibold text-ink">Review & Start Pipeline</h2>
+                                <p className="text-[14px] text-body">Verify your project settings before kicking off the pipeline</p>
                             </div>
 
                             <div className="space-y-4">
-                                {/* Project summary */}
-                                <div className="rounded-lg border border-border bg-background p-4 space-y-2">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Project</p>
-                                    <p className="font-semibold">{name}</p>
-                                    {description && <p className="text-sm text-muted-foreground">{description}</p>}
-                                    <Badge variant="outline" className="mt-1">
+                                <div className="rounded-[8px] border border-hairline bg-canvas-soft p-5 space-y-3">
+                                    <p className="font-mono text-[10px] uppercase tracking-wider text-mute">Project</p>
+                                    <p className="text-[16px] font-medium text-ink">{name}</p>
+                                    {description && <p className="text-[14px] text-body">{description}</p>}
+                                    <div className="inline-block mt-2 font-mono text-[10px] bg-canvas border border-hairline px-2 py-1 rounded-[4px] text-ink">
                                         {MODES.find(m => m.value === mode)?.label}
-                                    </Badge>
+                                    </div>
                                 </div>
 
-                                {/* Intent summary — if applicable */}
                                 {includesDataset && intent && (
-                                    <div className="rounded-lg border border-border bg-background p-4 space-y-2">
-                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Intent</p>
-                                        <p className="font-semibold">{INTENTS.find(i => i.value === intent)?.label}</p>
-                                        <p className="text-sm text-muted-foreground">{useCase}</p>
+                                    <div className="rounded-[8px] border border-hairline bg-canvas-soft p-5 space-y-3">
+                                        <p className="font-mono text-[10px] uppercase tracking-wider text-mute">Intent</p>
+                                        <p className="text-[16px] font-medium text-ink">{INTENTS.find(i => i.value === intent)?.label}</p>
+                                        <p className="text-[14px] text-body">{useCase}</p>
                                     </div>
                                 )}
 
-                                {/* Files summary */}
-                                <div className="rounded-lg border border-border bg-background p-4 space-y-2">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Files</p>
-                                    <p className="font-semibold">{files.length} file{files.length !== 1 ? 's' : ''}</p>
-                                    <div className="flex flex-wrap gap-1.5">
+                                <div className="rounded-[8px] border border-hairline bg-canvas-soft p-5 space-y-3">
+                                    <p className="font-mono text-[10px] uppercase tracking-wider text-mute">Files</p>
+                                    <p className="text-[16px] font-medium text-ink">{files.length} file{files.length !== 1 ? 's' : ''}</p>
+                                    <div className="flex flex-wrap gap-2 pt-1">
                                         {files.slice(0, 5).map(f => (
-                                            <Badge key={f.id} variant="outline" className="text-xs">{f.name}</Badge>
+                                            <div key={f.id} className="font-mono text-[10px] bg-canvas border border-hairline px-2 py-1 rounded-[4px] text-body">
+                                                {f.name}
+                                            </div>
                                         ))}
-                                        {files.length > 5 && <Badge variant="outline" className="text-xs">+{files.length - 5} more</Badge>}
+                                        {files.length > 5 && <div className="font-mono text-[10px] bg-canvas border border-hairline px-2 py-1 rounded-[4px] text-body">+{files.length - 5} more</div>}
                                     </div>
                                 </div>
 
-                                {/* Config summary */}
-                                <div className="rounded-lg border border-border bg-background p-4 space-y-3">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Configuration</p>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                                <div className="rounded-[8px] border border-hairline bg-canvas-soft p-5 space-y-4">
+                                    <p className="font-mono text-[10px] uppercase tracking-wider text-mute">Configuration</p>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
                                         {includesFineTune && (
                                             <div>
-                                                <p className="text-muted-foreground text-xs">Base Model</p>
-                                                <p className="font-medium">{MODELS.find(m => m.value === model)?.label}</p>
+                                                <p className="text-[12px] text-mute mb-1">Base Model</p>
+                                                <p className="text-[14px] font-medium text-ink">{MODELS.find(m => m.value === model)?.label}</p>
                                             </div>
                                         )}
                                         {includesDataset && (
                                             <>
                                                 <div>
-                                                    <p className="text-muted-foreground text-xs">Samples/Chunk</p>
-                                                    <p className="font-medium">{samplesPerChunk[0]}</p>
+                                                    <p className="text-[12px] text-mute mb-1">Samples/Chunk</p>
+                                                    <p className="text-[14px] font-medium text-ink">{samplesPerChunk}</p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-muted-foreground text-xs">Quality Threshold</p>
-                                                    <p className="font-medium">{qualityThreshold[0]}%</p>
+                                                    <p className="text-[12px] text-mute mb-1">Quality Threshold</p>
+                                                    <p className="text-[14px] font-medium text-ink">{qualityThreshold}%</p>
                                                 </div>
                                             </>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Evaluation summary */}
                                 {includesDataset && evalScore !== null && (
-                                    <div className="rounded-lg border border-border bg-background p-4 space-y-2">
-                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Data Quality</p>
-                                        <p className="font-semibold">{Math.round(evalScore * 100)}% — {evalScore > 0.6 ? 'High Quality' : evalScore > 0.4 ? 'Acceptable' : 'Low Quality'}</p>
+                                    <div className="rounded-[8px] border border-hairline bg-canvas-soft p-5 space-y-3">
+                                        <p className="font-mono text-[10px] uppercase tracking-wider text-mute">Data Quality</p>
+                                        <p className="text-[16px] font-medium text-ink">{Math.round(evalScore * 100)}% — {evalScore > 0.6 ? 'High Quality' : evalScore > 0.4 ? 'Acceptable' : 'Low Quality'}</p>
                                     </div>
                                 )}
 
-                                {/* Error */}
                                 {submitError && (
-                                    <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 flex items-start gap-3">
-                                        <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                                    <div className="rounded-[8px] border border-[#f7d4d6] bg-[#f7d4d6]/30 p-5 flex items-start gap-3">
+                                        <AlertCircle className="w-5 h-5 text-[#ee0000] shrink-0 mt-0.5" />
                                         <div>
-                                            <p className="text-sm font-medium text-red-500">Failed to start pipeline</p>
-                                            <p className="text-xs text-muted-foreground mt-1">{submitError}</p>
+                                            <p className="text-[14px] font-medium text-[#ee0000]">Failed to start pipeline</p>
+                                            <p className="text-[14px] text-body mt-1">{submitError}</p>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         </div>
                     )}
-                </CardContent>
-            </Card>
+                </div>
 
-            {/* Navigation buttons */}
-            <div className="flex items-center justify-between">
-                <Button
-                    variant="outline"
-                    className="gap-2"
-                    onClick={() => currentStep === 0 ? navigate(-1) : setCurrentStep(currentStep - 1)}
-                >
-                    <ArrowLeft className="w-4 h-4" />
-                    {currentStep === 0 ? 'Cancel' : 'Back'}
-                </Button>
+                {/* ── Navigation Buttons ── */}
+                <div className="flex items-center justify-between pt-4">
+                    <button
+                        onClick={() => currentStep === 0 ? navigate(-1) : setCurrentStep(currentStep - 1)}
+                        className="bg-canvas border border-hairline text-ink px-6 h-10 rounded-full text-[14px] font-medium hover:bg-canvas-soft transition-colors flex items-center gap-2 shadow-[0px_1px_1px_#00000005]"
+                    >
+                        <ArrowLeft className="w-4 h-4" />
+                        {currentStep === 0 ? 'Cancel' : 'Back'}
+                    </button>
 
-                {currentStepId !== 'review' ? (
-                    <Button
-                        className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
-                        disabled={!canProceed()}
-                        onClick={() => setCurrentStep(currentStep + 1)}
-                    >
-                        Continue
-                        <ArrowRight className="w-4 h-4" />
-                    </Button>
-                ) : (
-                    <Button
-                        className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground glow"
-                        onClick={handleSubmit}
-                        disabled={submitting}
-                    >
-                        {submitting ? (
-                            <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                        ) : (
-                            <Sparkles className="w-4 h-4" />
-                        )}
-                        {submitting ? 'Creating Project...' : 'Start Pipeline'}
-                    </Button>
-                )}
+                    {currentStepId !== 'review' ? (
+                        <button
+                            disabled={!canProceed()}
+                            onClick={() => setCurrentStep(currentStep + 1)}
+                            className="bg-ink text-canvas px-6 h-10 rounded-full text-[14px] font-medium hover:bg-ink/90 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Continue
+                            <ArrowRight className="w-4 h-4" />
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleSubmit}
+                            disabled={submitting}
+                            className="bg-ink text-canvas px-8 h-10 rounded-full text-[14px] font-medium hover:bg-ink/90 transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {submitting ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                                <Rocket className="w-4 h-4" />
+                            )}
+                            {submitting ? 'Starting...' : 'Start Pipeline'}
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     )

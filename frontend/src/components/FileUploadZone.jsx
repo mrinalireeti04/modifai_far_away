@@ -1,7 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { Upload, X, FileText, Image, File } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 
 const ACCEPTED_TYPES = {
     'application/pdf': 'PDF',
@@ -81,11 +79,11 @@ export default function FileUploadZone({ files, onFilesChange }) {
                 onClick={() => inputRef.current?.click()}
                 className={`
                     relative flex flex-col items-center justify-center
-                    rounded-xl border-2 border-dashed p-8 cursor-pointer
+                    rounded-[8px] border p-12 cursor-pointer
                     transition-all duration-200
                     ${dragActive
-                        ? 'border-primary bg-primary/10 scale-[1.01]'
-                        : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                        ? 'border-solid border-ink bg-canvas scale-[1.01]'
+                        : 'border-dashed border-hairline bg-canvas-soft hover:border-hairline-strong'
                     }
                 `}
             >
@@ -101,62 +99,58 @@ export default function FileUploadZone({ files, onFilesChange }) {
                     }}
                 />
 
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-colors duration-200 ${dragActive ? 'bg-primary/20' : 'bg-muted'
+                <div className={`w-12 h-12 rounded-full border flex items-center justify-center mb-4 transition-colors duration-200 ${dragActive ? 'bg-ink border-ink' : 'bg-canvas border-hairline'
                     }`}>
-                    <Upload className={`w-5 h-5 transition-colors duration-200 ${dragActive ? 'text-primary' : 'text-muted-foreground'
-                        }`} />
+                    <Upload className={`w-5 h-5 transition-colors duration-200 ${dragActive ? 'text-canvas' : 'text-ink'
+                        }`} strokeWidth={1.5} />
                 </div>
 
-                <p className="text-sm font-medium mb-1">
+                <p className="text-[14px] leading-[20px] font-medium text-ink mb-1">
                     {dragActive ? 'Drop files here' : 'Drag & drop files here'}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                    or click to browse · PDF, PNG, JPG, DOCX, TXT · Max 50MB each
+                <p className="font-mono text-[12px] text-mute uppercase tracking-wider mt-2">
+                    PDF, PNG, JPG, DOCX, TXT · Max 50MB
                 </p>
             </div>
 
             {/* File list */}
             {files.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-3 mt-6">
                     <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium">
+                        <p className="font-mono text-[12px] text-mute uppercase tracking-wider">
                             {files.length} file{files.length !== 1 ? 's' : ''} selected
                         </p>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-xs text-muted-foreground hover:text-destructive h-7"
-                            onClick={() => onFilesChange([])}
+                        <button
+                            className="text-[12px] text-body hover:text-ink transition-colors"
+                            onClick={(e) => { e.stopPropagation(); onFilesChange([]) }}
                         >
                             Clear all
-                        </Button>
+                        </button>
                     </div>
 
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                         {files.map((f) => {
                             const Icon = getFileIcon(f.type)
                             return (
                                 <div
                                     key={f.id}
-                                    className="flex items-center gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 group"
+                                    className="flex items-center gap-4 rounded-[6px] border border-hairline bg-canvas px-4 py-3 group hover:border-hairline-strong transition-colors"
                                 >
-                                    <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                                        <Icon className="w-4 h-4 text-primary" />
+                                    <div className="w-10 h-10 rounded-full border border-hairline bg-canvas-soft flex items-center justify-center shrink-0">
+                                        <Icon className="w-4 h-4 text-ink" strokeWidth={1.5} />
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-medium truncate">{f.name}</p>
-                                        <p className="text-[10px] text-muted-foreground">
+                                    <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                                        <p className="text-[14px] leading-[20px] font-medium text-ink truncate">{f.name}</p>
+                                        <p className="font-mono text-[10px] text-mute uppercase tracking-wider">
                                             {formatSize(f.size)} · {ACCEPTED_TYPES[f.type] || 'FILE'}
                                         </p>
                                     </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                    <button
+                                        className="h-8 w-8 shrink-0 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 transition-opacity text-mute hover:text-ink hover:bg-canvas-soft"
                                         onClick={(e) => { e.stopPropagation(); removeFile(f.id) }}
                                     >
-                                        <X className="w-3 h-3" />
-                                    </Button>
+                                        <X className="w-4 h-4" />
+                                    </button>
                                 </div>
                             )
                         })}

@@ -17,7 +17,7 @@ const iconMap = { Upload, ScanText, Layers, Database, ShieldCheck, Brain, Rocket
 
 const statusStyles = {
     complete: {
-        circle: 'bg-emerald-500 border-emerald-500 text-white',
+        circle: 'bg-emerald-500 border-emerald-500 text-canvas',
         label: 'text-emerald-400',
         line: 'bg-emerald-500',
         StatusIcon: Check,

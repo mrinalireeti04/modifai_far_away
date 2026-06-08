@@ -1,38 +1,33 @@
-import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-    FolderKanban,
-    Rocket,
-    Database,
-    TrendingUp,
     Plus,
     ArrowRight,
-    Sparkles,
-    Upload,
-    ScanText,
-    Layers,
+    FileText,
+    Database,
+    Target,
     Brain,
-    ShieldCheck,
+    Rocket,
+    Activity,
+    Box,
     Loader2,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import StatsCard from '@/components/StatsCard'
-import ProjectCard from '@/components/ProjectCard'
-import { PIPELINE_STEPS } from '@/data/mockData'
-import { apiClient } from '@/api/client'
-
-const pipelineIcons = [Upload, ScanText, Layers, Database, ShieldCheck, Brain, Rocket]
+    ChevronRight,
+    Server,
+    Layers
+} from 'lucide-react';
+import { apiClient } from '@/api/client';
+import BorderGlow from '@/components/ui/BorderGlow';
+import SpotlightCard from '@/components/ui/SpotlightCard';
 
 export default function DashboardPage() {
-    const navigate = useNavigate()
-    const [projects, setProjects] = useState([])
-    const [loading, setLoading] = useState(true)
+    const navigate = useNavigate();
+    const [projects, setProjects] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchProjects = async () => {
             try {
-                const data = await apiClient.get('projects/')
+                const data = await apiClient.get('projects/');
                 const mapped = data.map(p => ({
                     id: p.id,
                     name: p.name,
@@ -44,171 +39,616 @@ export default function DashboardPage() {
                     filesCount: 0,
                     currentStep: 0,
                     pipeline: [],
-                }))
-                setProjects(mapped)
+                }));
+                setProjects(mapped);
             } catch (err) {
-                console.error('Failed to fetch projects for dashboard:', err)
+                console.error('Failed to fetch projects for dashboard:', err);
             } finally {
-                setLoading(false)
+                setLoading(false);
             }
-        }
-        fetchProjects()
-    }, [])
+        };
+        fetchProjects();
+    }, []);
 
-    // Derive stats from real data
     const stats = {
         totalProjects: projects.length,
         modelsDeployed: projects.filter(p => p.mode === 'full' && p.status === 'completed').length,
         datasetsGenerated: projects.filter(p => p.status === 'completed').length,
         running: projects.filter(p => p.status === 'running').length,
-    }
+    };
 
-    const recentProjects = projects.slice(0, 4)
+    const recentProjects = projects.slice(0, 5);
+
+    // Timeline Mock Data for Section 5
+    const mockTimeline = [
+        { id: 1, event: 'Deployment Ready', time: '11:57 AM', status: 'success' },
+        { id: 2, event: 'Training Started', time: '11:48 AM', status: 'running' },
+        { id: 3, event: 'Dataset Generated', time: '11:46 AM', status: 'success' },
+        { id: 4, event: 'OCR Complete', time: '11:42 AM', status: 'success' },
+    ];
+
+    const getStatusColor = (status) => {
+        switch (status.toLowerCase()) {
+            case 'completed': return 'bg-[#0070f3]'; // success / link
+            case 'running': return 'bg-[#f5a623]'; // warning
+            case 'failed': return 'bg-[#ee0000]'; // error
+            default: return 'bg-[#a1a1a1]'; // pending / hairline-strong
+        }
+    };
 
     return (
-        <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
-            {/* ── Hero Section ── */}
-            <section className="relative rounded-2xl overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/5 to-transparent" />
-                <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+        <div className="min-h-screen bg-canvas-soft text-ink font-sans selection:bg-ink selection:text-canvas">
+            {/* Embedded styles for organic backdrop drifting */}
+            <style>{`
+                @keyframes blob-drift-1 {
+                    0% { 
+                        transform: translate(0px, 0px) scale(1); 
+                        opacity: calc(var(--blob-base-opacity) * 0.85); 
+                        filter: blur(var(--blob-base-blur)); 
+                    }
+                    33% { 
+                        transform: translate(260px, -180px) scale(1.15); 
+                        opacity: calc(var(--blob-base-opacity) * 1); 
+                        filter: blur(calc(var(--blob-base-blur) * 1.15)); 
+                    }
+                    66% { 
+                        transform: translate(-180px, 140px) scale(0.85); 
+                        opacity: calc(var(--blob-base-opacity) * 0.75); 
+                        filter: blur(calc(var(--blob-base-blur) * 0.85)); 
+                    }
+                    100% { 
+                        transform: translate(0px, 0px) scale(1); 
+                        opacity: calc(var(--blob-base-opacity) * 0.85); 
+                        filter: blur(var(--blob-base-blur)); 
+                    }
+                }
+                @keyframes blob-drift-2 {
+                    0% { 
+                        transform: translate(0px, 0px) scale(1); 
+                        opacity: calc(var(--blob-base-opacity) * 0.8); 
+                        filter: blur(var(--blob-base-blur)); 
+                    }
+                    50% { 
+                        transform: translate(-280px, 200px) scale(0.85); 
+                        opacity: calc(var(--blob-base-opacity) * 1); 
+                        filter: blur(calc(var(--blob-base-blur) * 0.9)); 
+                    }
+                    100% { 
+                        transform: translate(0px, 0px) scale(1); 
+                        opacity: calc(var(--blob-base-opacity) * 0.8); 
+                        filter: blur(var(--blob-base-blur)); 
+                    }
+                }
+                @keyframes blob-drift-3 {
+                    0% { 
+                        transform: translate(0px, 0px) scale(0.85); 
+                        opacity: calc(var(--blob-base-opacity) * 0.9); 
+                        filter: blur(var(--blob-base-blur)); 
+                    }
+                    50% { 
+                        transform: translate(220px, 260px) scale(1.15); 
+                        opacity: calc(var(--blob-base-opacity) * 1); 
+                        filter: blur(calc(var(--blob-base-blur) * 1.1)); 
+                    }
+                    100% { 
+                        transform: translate(0px, 0px) scale(0.85); 
+                        opacity: calc(var(--blob-base-opacity) * 0.9); 
+                        filter: blur(var(--blob-base-blur)); 
+                    }
+                }
+                .animate-blob-1 {
+                    --blob-base-opacity: 1;
+                    --blob-base-blur: 100px;
+                    filter: blur(var(--blob-base-blur));
+                    opacity: var(--blob-base-opacity);
+                    animation: blob-drift-1 13.8s ease-in-out infinite;
+                }
+                .animate-blob-2 {
+                    --blob-base-opacity: 1;
+                    --blob-base-blur: 100px;
+                    filter: blur(var(--blob-base-blur));
+                    opacity: var(--blob-base-opacity);
+                    animation: blob-drift-2 16.6s ease-in-out infinite;
+                }
+                .animate-blob-3 {
+                    --blob-base-opacity: 0.7;
+                    --blob-base-blur: 120px;
+                    filter: blur(var(--blob-base-blur));
+                    opacity: var(--blob-base-opacity);
+                    animation: blob-drift-3 20.2s ease-in-out infinite;
+                }
+                .dark .animate-blob-1 {
+                    --blob-base-opacity: 0.44;
+                }
+                .dark .animate-blob-2 {
+                    --blob-base-opacity: 0.44;
+                }
+                .dark .animate-blob-3 {
+                    --blob-base-opacity: 0.33;
+                }
+            `}</style>
 
-                <div className="relative px-8 py-12 md:py-16">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                        <div className="space-y-4 max-w-xl">
-                            <div className="flex items-center gap-2">
-                                <Sparkles className="w-5 h-5 text-primary" />
-                                <span className="text-sm font-medium text-primary">AI Model Factory</span>
-                            </div>
-                            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-                                Transform Your Data Into{' '}
-                                <span className="gradient-text">Fine-Tuned Models</span>
-                            </h1>
-                            <p className="text-muted-foreground leading-relaxed">
-                                Upload documents, generate synthetic datasets, and deploy custom AI models — all from one pipeline.
-                            </p>
-                            <div className="flex items-center gap-3 pt-2">
-                                <Button
-                                    size="lg"
-                                    className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground glow"
-                                    onClick={() => navigate('/projects/new')}
-                                >
-                                    <Plus className="w-4 h-4" />
-                                    New Project
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    size="lg"
-                                    className="gap-2"
-                                    onClick={() => navigate('/projects')}
-                                >
-                                    View Projects
-                                    <ArrowRight className="w-4 h-4" />
-                                </Button>
-                            </div>
+            {/* Mesh gradient atmospheric backdrop - Hero Scale only */}
+            <div className="absolute top-0 left-0 right-0 h-[700px] overflow-hidden pointer-events-none z-0">
+                {/* Blob 1: Left Cyan/Blue */}
+                <div className="absolute top-[-25%] left-[-15%] w-[65%] h-[130%] rounded-full bg-gradient-to-tr from-[#007cf0]/25 to-[#00dfd8]/20 animate-blob-1" />
+                
+                {/* Blob 2: Right Purple/Pink */}
+                <div className="absolute top-[-15%] right-[-15%] w-[55%] h-[110%] rounded-full bg-gradient-to-tr from-[#7928ca]/25 to-[#ff0080]/20 animate-blob-2" />
+                
+                {/* Blob 3: Center Subtle Overlay */}
+                <div className="absolute top-[-20%] left-[20%] w-[45%] h-[90%] rounded-full bg-gradient-to-tr from-[#007cf0]/15 to-[#7928ca]/15 animate-blob-3" />
+                
+                {/* Smooth Fade Overlay to prevent abrupt cutoff */}
+                <div 
+                    className="absolute bottom-0 left-0 right-0 h-[250px] pointer-events-none"
+                    style={{
+                        background: 'linear-gradient(to top, var(--canvas-soft) 0%, transparent 100%)'
+                    }}
+                />
+            </div>
+
+            <div className="relative z-10 max-w-[1400px] mx-auto px-4 md:px-6 py-16 md:py-24 space-y-24 md:space-y-32">
+
+                {/* ── Section 1: Hero Command Center ── */}
+                <section className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-16">
+                    <div className="max-w-2xl space-y-6">
+                        <div className="font-mono text-[12px] leading-[16px] uppercase text-mute tracking-widest">
+                            Model Factory
                         </div>
+                        <h1 className="text-[40px] md:text-[48px] leading-[44px] md:leading-[48px] font-semibold tracking-[-2.4px] text-ink">
+                            Build specialized AI systems from raw knowledge.
+                        </h1>
+                        <p className="text-[18px] leading-[28px] text-body">
+                            Transform documents into synthetic datasets, fine-tune models, and deploy as a managed API endpoint.
+                        </p>
+                        <div className="flex items-center gap-4 pt-4">
+                            <button 
+                                onClick={() => navigate('/projects/new')}
+                                className="bg-ink text-canvas text-[16px] leading-[24px] font-medium h-[48px] px-6 rounded-full hover:bg-ink/90 transition-colors flex items-center gap-2 shadow-sm"
+                            >
+                                <Plus className="w-5 h-5" />
+                                New Project
+                            </button>
+                            <button 
+                                onClick={() => navigate('/projects')}
+                                className="bg-canvas text-ink text-[16px] leading-[24px] font-medium h-[48px] px-6 rounded-full border border-hairline hover:bg-canvas-soft transition-colors flex items-center gap-2 shadow-[0px_1px_1px_#00000005,0px_2px_2px_#0000000a]"
+                            >
+                                View Projects
+                                <ArrowRight className="w-4 h-4 text-mute" />
+                            </button>
+                        </div>
+                    </div>
 
-                        {/* Mini pipeline visualization */}
-                        <div className="hidden lg:flex items-center gap-1">
-                            {PIPELINE_STEPS.map((step, i) => {
-                                const Icon = pipelineIcons[i]
-                                return (
-                                    <div key={step.id} className="flex items-center">
-                                        <div className="flex flex-col items-center gap-1.5 group">
-                                            <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center transition-all duration-200 group-hover:bg-primary/20 group-hover:scale-110">
-                                                <Icon className="w-4 h-4 text-primary" />
+                    {/* Animated System Diagram */}
+                    <PipelineDiagram />
+                </section>
+
+                {/* ── Section 2: Operational Overview ── */}
+                <section>
+                    <h2 className="font-mono text-[12px] leading-[16px] uppercase text-mute tracking-widest mb-6">
+                        Operational Overview
+                    </h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {[
+                            { label: 'Projects', value: stats.totalProjects, icon: Box },
+                            { label: 'Active Pipelines', value: stats.running, icon: Activity },
+                            { label: 'Datasets', value: stats.datasetsGenerated, icon: Database },
+                            { label: 'Deployments', value: stats.modelsDeployed, icon: Server }
+                        ].map((stat, i) => (
+                            <BorderGlow
+                                key={i}
+                                borderRadius={8}
+                                backgroundColor="var(--canvas)"
+                                edgeSensitivity={30}
+                                glowColor="40 80 80"
+                                colors={['#c084fc', '#f472b6', '#38bdf8']}
+                                animated={false}
+                                glowRadius={40}
+                                glowIntensity={1.0}
+                            >
+                                <div className="p-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <span className="text-[14px] leading-[20px] font-medium text-body">{stat.label}</span>
+                                        <stat.icon className="w-4 h-4 text-mute" strokeWidth={1.5} />
+                                    </div>
+                                    <div className="flex items-end justify-between">
+                                        <span className="text-[32px] leading-[40px] font-semibold tracking-[-1.28px] text-ink">
+                                            {stat.value}
+                                        </span>
+                                        {stat.label === 'Active Pipelines' && stat.value > 0 && (
+                                            <div className="flex items-center gap-1.5 mb-2">
+                                                <div className="w-2 h-2 rounded-full bg-[#0070f3] animate-pulse" />
+                                                <span className="text-[12px] leading-[16px] text-[#0070f3] font-medium">Running</span>
                                             </div>
-                                            <span className="text-[10px] text-muted-foreground text-center w-14 leading-tight">
-                                                {step.name}
-                                            </span>
-                                        </div>
-                                        {i < PIPELINE_STEPS.length - 1 && (
-                                            <div className="w-4 h-px bg-border mx-0.5 mb-5" />
                                         )}
                                     </div>
-                                )
-                            })}
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* ── Stats Grid ── */}
-            <section>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <StatsCard
-                        icon={FolderKanban}
-                        label="Total Projects"
-                        value={stats.totalProjects}
-                    />
-                    <StatsCard
-                        icon={Rocket}
-                        label="Models Deployed"
-                        value={stats.modelsDeployed}
-                    />
-                    <StatsCard
-                        icon={Database}
-                        label="Datasets Generated"
-                        value={stats.datasetsGenerated}
-                    />
-                    <StatsCard
-                        icon={TrendingUp}
-                        label="Running"
-                        value={stats.running}
-                    />
-                </div>
-            </section>
-
-            {/* ── Recent Projects ── */}
-            <section>
-                <div className="flex items-center justify-between mb-5">
-                    <div>
-                        <h2 className="text-lg font-semibold">Recent Projects</h2>
-                        <p className="text-sm text-muted-foreground">Your latest model training pipelines</p>
-                    </div>
-                    <Button
-                        variant="ghost"
-                        className="gap-1 text-sm text-muted-foreground hover:text-foreground"
-                        onClick={() => navigate('/projects')}
-                    >
-                        View all
-                        <ArrowRight className="w-3.5 h-3.5" />
-                    </Button>
-                </div>
-                {loading ? (
-                    <div className="flex justify-center py-12">
-                        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                    </div>
-                ) : recentProjects.length === 0 ? (
-                    <div className="text-center text-muted-foreground py-8">
-                        <p className="text-sm">No projects yet. Create your first one!</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {recentProjects.map(project => (
-                            <ProjectCard key={project.id} project={project} />
+                                </div>
+                            </BorderGlow>
                         ))}
                     </div>
-                )}
-            </section>
+                </section>
 
-            {/* ── Quick Start CTA ── */}
-            <section>
-                <Card className="border-dashed border-2 border-primary/20 bg-primary/5 hover:bg-primary/8 transition-colors cursor-pointer"
-                    onClick={() => navigate('/projects/new')}
-                >
-                    <CardContent className="flex flex-col items-center justify-center py-10 gap-3">
-                        <div className="w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center">
-                            <Plus className="w-6 h-6 text-primary" />
+                {/* ── Grid for Section 3 (Table) & Section 5 (Timeline) ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+                    {/* ── Section 3: Active Workbench ── */}
+                    <section className="lg:col-span-2">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="font-mono text-[12px] leading-[16px] uppercase text-mute tracking-widest">
+                                Active Workbench
+                            </h2>
+                            <button
+                                onClick={() => navigate('/projects')}
+                                className="text-[14px] leading-[20px] text-body hover:text-ink transition-colors flex items-center gap-1"
+                            >
+                                View all <ChevronRight className="w-4 h-4" />
+                            </button>
                         </div>
-                        <div className="text-center">
-                            <h3 className="font-semibold">Start a New Project</h3>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Upload your documents and create a fine-tuned AI model in minutes
-                            </p>
+
+                        <div className="bg-canvas rounded-[8px] border border-hairline shadow-[0px_1px_1px_#00000005] overflow-hidden">
+                            {loading ? (
+                                <div className="flex justify-center items-center p-12">
+                                    <Loader2 className="w-6 h-6 animate-spin text-ink" />
+                                </div>
+                            ) : recentProjects.length === 0 ? (
+                                <div className="p-12 text-center border-t border-hairline">
+                                    <p className="text-[14px] text-mute">No active projects. Start a new workflow to see it here.</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse min-w-[500px]">
+                                        <thead>
+                                            <tr className="bg-canvas-soft border-b border-hairline">
+                                                <th className="font-mono text-[12px] font-normal text-mute uppercase tracking-wider py-3 px-4">Project</th>
+                                                <th className="font-mono text-[12px] font-normal text-mute uppercase tracking-wider py-3 px-4 hidden sm:table-cell">Mode</th>
+                                                <th className="font-mono text-[12px] font-normal text-mute uppercase tracking-wider py-3 px-4">Status</th>
+                                                <th className="font-mono text-[12px] font-normal text-mute uppercase tracking-wider py-3 px-4 hidden md:table-cell text-right">Last Updated</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-[#ebebeb]">
+                                            {recentProjects.map(project => (
+                                                <tr
+                                                    key={project.id}
+                                                    onClick={() => navigate(`/projects/${project.id}`)}
+                                                    className="hover:bg-canvas-soft transition-colors cursor-pointer group"
+                                                >
+                                                    <td className="py-4 px-4 text-[14px] leading-[20px] font-medium text-ink">
+                                                        {project.name}
+                                                    </td>
+                                                    <td className="py-4 px-4 text-[14px] leading-[20px] text-body hidden sm:table-cell">
+                                                        <span className="capitalize">{project.mode.replace('_', ' ')}</span>
+                                                    </td>
+                                                    <td className="py-4 px-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={`w-2 h-2 rounded-full ${getStatusColor(project.status)}`} />
+                                                            <span className="text-[14px] leading-[20px] text-body capitalize">{project.status}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-[14px] leading-[20px] text-mute hidden md:table-cell text-right">
+                                                        {new Date(project.createdAt).toLocaleDateString()}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </div>
-                    </CardContent>
-                </Card>
-            </section>
+                    </section>
+
+                    {/* ── Section 5: Pipeline Activity ── */}
+                    <section>
+                        <h2 className="font-mono text-[12px] leading-[16px] uppercase text-mute tracking-widest mb-6">
+                            Activity
+                        </h2>
+                        <ActivityTimeline items={mockTimeline} />
+                    </section>
+                </div>
+
+                {/* ── Section 4: Quick Start ── */}
+                <section>
+                    <h2 className="font-mono text-[12px] leading-[16px] uppercase text-mute tracking-widest mb-6">
+                        Quick Start
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {[
+                            {
+                                title: 'Generate Dataset',
+                                desc: 'Create training data from documents.',
+                                icon: Database,
+                                mode: 'dataset'
+                            },
+                            {
+                                title: 'Fine-Tune Model',
+                                desc: 'Train a specialized model.',
+                                icon: Brain,
+                                mode: 'finetune'
+                            },
+                            {
+                                title: 'Full Pipeline',
+                                desc: 'Documents to deployment.',
+                                icon: Layers,
+                                mode: 'full'
+                            }
+                        ].map((card, i) => (
+                            <SpotlightCard
+                                key={i}
+                                onClick={() => navigate(`/projects/new?mode=${card.mode}`)}
+                                className="group bg-canvas rounded-[8px] p-6 border border-hairline shadow-[0px_1px_1px_#00000005] hover:shadow-[0px_1px_1px_#00000005,0px_2px_2px_#0000000a,0px_8px_8px_-8px_#0000000a] hover:border-hairline-strong transition-all cursor-pointer flex flex-col"
+                            >
+                                <div className="w-10 h-10 rounded-full border border-hairline bg-canvas-soft flex items-center justify-center mb-6 group-hover:bg-ink transition-colors">
+                                    <card.icon className="w-4 h-4 text-ink group-hover:text-canvas transition-colors" />
+                                </div>
+                                <h3 className="text-[16px] leading-[24px] font-medium text-ink mb-1">
+                                    {card.title}
+                                </h3>
+                                <p className="text-[14px] leading-[20px] text-body">
+                                    {card.desc}
+                                </p>
+                            </SpotlightCard>
+                        ))}
+                    </div>
+                </section>
+
+            </div>
         </div>
-    )
+    );
+}
+
+// ─── Animated Pipeline Diagram ───────────────────────────────────────────────
+const PIPELINE_STEPS = [
+    { icon: FileText, label: 'Docs' },
+    { icon: Database, label: 'Data' },
+    { icon: Target, label: 'Eval' },
+    { icon: Brain, label: 'Train' },
+    { icon: Rocket, label: 'Deploy' },
+];
+
+const TRAVEL_MS   = 900;   // signal traverses a connector
+const HOLD_MS     = 2500;  // node stays lit
+const PAUSE_MS    = 1200;  // pause after last node before restart
+
+function PipelineDiagram() {
+    // activeNode  : which node is glowing  (-1 = none, traveling)
+    // travelIdx   : which connector is showing the pulse (0-3)
+    const [activeNode,  setActiveNode]  = useState(0);
+    const [travelIdx,   setTravelIdx]   = useState(null);
+    const timerRef = useRef([]);
+
+    const clearTimers = () => { timerRef.current.forEach(clearTimeout); timerRef.current = []; };
+
+    const schedule = useCallback(() => {
+        clearTimers();
+        let cursor = 0;
+
+        const step = (nodeIdx) => {
+            // Arrive at node
+            const t1 = setTimeout(() => {
+                setTravelIdx(null);
+                setActiveNode(nodeIdx);
+            }, 0);
+
+            // After hold, either travel to next or restart
+            const t2 = setTimeout(() => {
+                if (nodeIdx < PIPELINE_STEPS.length - 1) {
+                    setActiveNode(null);          // dim current node
+                    setTravelIdx(nodeIdx);        // show connector pulse
+                    const t3 = setTimeout(() => step(nodeIdx + 1), TRAVEL_MS);
+                    timerRef.current.push(t3);
+                } else {
+                    // Last node — pause, then restart
+                    setActiveNode(null);
+                    const t4 = setTimeout(() => {
+                        setTravelIdx(null);
+                        step(0);
+                    }, PAUSE_MS);
+                    timerRef.current.push(t4);
+                }
+            }, HOLD_MS);
+
+            timerRef.current.push(t1, t2);
+        };
+
+        step(0);
+    }, []);
+
+    useEffect(() => { schedule(); return () => clearTimers(); }, [schedule]);
+
+    return (
+        <div className="hidden lg:flex items-center gap-4 py-8 px-10 bg-canvas rounded-[12px] border border-hairline shadow-[0px_1px_1px_#00000005,0px_8px_16px_-4px_#0000000a] relative overflow-hidden">
+            {PIPELINE_STEPS.map((step, idx, arr) => (
+                <React.Fragment key={idx}>
+                    {/* Node */}
+                    <div className="flex flex-col items-center gap-3">
+                        <div className="relative w-12 h-12">
+                            {/* Decorative Glow Layer */}
+                            {activeNode === idx && (
+                                <>
+                                    {/* Outset ring */}
+                                    <div className="absolute inset-[-3px] rounded-full border border-[rgba(0,223,216,0.12)] pointer-events-none z-0" />
+                                    {/* Blurred back-glow */}
+                                    <div
+                                        className="absolute inset-[-8px] rounded-full pointer-events-none z-0"
+                                        style={{
+                                            background: 'rgba(0,223,216,0.15)',
+                                            filter: 'blur(8px)',
+                                        }}
+                                    />
+                                </>
+                            )}
+
+                            {/* Crisp Circle Node itself */}
+                            <div
+                                className="absolute inset-0 rounded-full border flex items-center justify-center transition-all duration-500 bg-canvas-soft z-10"
+                                style={{
+                                    borderColor:    activeNode === idx ? '#00DFD8' : 'var(--hairline)',
+                                    backgroundColor: activeNode === idx ? 'rgba(0,223,216,0.08)' : 'var(--canvas-soft)',
+                                }}
+                            >
+                                <step.icon
+                                    className="w-5 h-5 transition-colors duration-500"
+                                    style={{ color: activeNode === idx ? '#00DFD8' : 'var(--ink)' }}
+                                    strokeWidth={1.5}
+                                />
+                            </div>
+                        </div>
+                        <span
+                            className="font-mono text-[10px] uppercase tracking-wider transition-colors duration-500"
+                            style={{ color: activeNode === idx ? '#00DFD8' : 'var(--mute)' }}
+                        >
+                            {step.label}
+                        </span>
+                    </div>
+
+                    {/* Connector with traveling pulse */}
+                    {idx < arr.length - 1 && (
+                        <div className="relative w-8 -mt-6" style={{ height: '1px' }}>
+                            {/* static dashed baseline */}
+                            <div className="absolute inset-0 border-t border-dashed border-hairline-strong" />
+                            {/* traveling pulse dot */}
+                            {travelIdx === idx && (
+                                <div
+                                    className="absolute top-[-3px] h-[7px] rounded-full"
+                                    style={{
+                                        width: '12px',
+                                        background: 'linear-gradient(90deg, transparent 0%, #00DFD8 50%, transparent 100%)',
+                                        animation: `pipeline-travel ${TRAVEL_MS}ms cubic-bezier(0.25,0,0.25,1) forwards`,
+                                    }}
+                                />
+                            )}
+                        </div>
+                    )}
+                </React.Fragment>
+            ))}
+
+            <style>{`
+                @keyframes pipeline-travel {
+                    from { left: 0px;  opacity: 0; }
+                    15%  { opacity: 1; }
+                    85%  { opacity: 1; }
+                    to   { left: calc(100% - 12px); opacity: 0; }
+                }
+            `}</style>
+        </div>
+    );
+}
+
+// ─── Animated Activity Timeline ───────────────────────────────────────────────
+function ActivityTimeline({ items }) {
+    const [activeItem,  setActiveItem]  = useState(0);
+    const [travelLine,  setTravelLine]  = useState(null); // connector index showing pulse
+    const timerRef = useRef([]);
+
+    const clearTimers = () => { timerRef.current.forEach(clearTimeout); timerRef.current = []; };
+
+    const schedule = useCallback(() => {
+        clearTimers();
+
+        const step = (itemIdx) => {
+            const t1 = setTimeout(() => {
+                setTravelLine(null);
+                setActiveItem(itemIdx);
+            }, 0);
+
+            const t2 = setTimeout(() => {
+                if (itemIdx < items.length - 1) {
+                    setActiveItem(null);
+                    setTravelLine(itemIdx);
+                    const t3 = setTimeout(() => step(itemIdx + 1), TRAVEL_MS);
+                    timerRef.current.push(t3);
+                } else {
+                    setActiveItem(null);
+                    const t4 = setTimeout(() => { setTravelLine(null); step(0); }, PAUSE_MS);
+                    timerRef.current.push(t4);
+                }
+            }, HOLD_MS);
+
+            timerRef.current.push(t1, t2);
+        };
+
+        step(0);
+    }, [items]);
+
+    useEffect(() => { schedule(); return () => clearTimers(); }, [schedule]);
+
+    return (
+        <div className="bg-canvas rounded-[8px] border border-hairline shadow-[0px_1px_1px_#00000005] p-6 h-[calc(100%-40px)]">
+            <div className="space-y-6">
+                {items.map((item, i) => (
+                    <div key={item.id} className="relative pl-6">
+                        {/* Vertical connector */}
+                        {i !== items.length - 1 && (
+                            <div className="absolute left-[7px] top-6 bottom-[-24px] w-[1px] bg-hairline overflow-hidden">
+                                {travelLine === i && (
+                                    <div
+                                        className="absolute left-0 w-full rounded-full"
+                                        style={{
+                                            height: '16px',
+                                            background: 'linear-gradient(180deg, transparent 0%, #7DD3FC 50%, transparent 100%)',
+                                            animation: `timeline-travel ${TRAVEL_MS}ms cubic-bezier(0.25,0,0.25,1) forwards`,
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        )}
+
+                        {/* Node indicator */}
+                        <div className="absolute left-0 top-1.5 w-4 h-4">
+                            {/* Decorative Glow Layer */}
+                            {activeItem === i && (
+                                <>
+                                    {/* Outset ring */}
+                                    <div className="absolute inset-[-2px] rounded-full border border-[rgba(125,211,252,0.15)] pointer-events-none z-0" />
+                                    {/* Blurred back-glow */}
+                                    <div
+                                        className="absolute inset-[-4px] rounded-full pointer-events-none z-0"
+                                        style={{
+                                            background: 'rgba(125,211,252,0.15)',
+                                            filter: 'blur(4px)',
+                                        }}
+                                    />
+                                </>
+                            )}
+
+                            {/* Crisp Circle Node itself */}
+                            <div
+                                className="absolute inset-0 rounded-full border flex items-center justify-center transition-all duration-500 bg-canvas z-10"
+                                style={{
+                                    borderColor: activeItem === i ? '#7DD3FC' : 'var(--hairline)',
+                                }}
+                            >
+                                <div
+                                    className="w-1.5 h-1.5 rounded-full transition-colors duration-500"
+                                    style={{ background: activeItem === i ? '#7DD3FC' : 'var(--ink)' }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Text */}
+                        <div className="flex flex-col gap-0.5">
+                            <span
+                                className="text-[14px] leading-[20px] font-medium transition-colors duration-500"
+                                style={{ color: activeItem === i ? '#7DD3FC' : 'var(--ink)' }}
+                            >
+                                {item.event}
+                            </span>
+                            <span className="font-mono text-[12px] leading-[16px] text-mute">
+                                {item.time}
+                            </span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <style>{`
+                @keyframes timeline-travel {
+                    from { top: -16px; opacity: 0; }
+                    15%  { opacity: 1; }
+                    85%  { opacity: 1; }
+                    to   { top: 100%;  opacity: 0; }
+                }
+            `}</style>
+        </div>
+    );
 }
