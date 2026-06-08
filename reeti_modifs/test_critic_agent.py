@@ -15,12 +15,22 @@ import json
 import pytest
 from unittest.mock import MagicMock, patch
 
-from modifai.core.critic_agent import (
-    critique_sample,
-    run_critic_batch,
-    _parse_critic_response,
-    CRITIC_SYSTEM_PROMPT,
-)
+try:
+    from reeti_modifs.critic_agent import (
+        critique_sample,
+        run_critic_batch,
+        _parse_critic_response,
+        CRITIC_SYSTEM_PROMPT,
+    )
+    CRITIC_PATH = "reeti_modifs.critic_agent"
+except ImportError:
+    from modifai.core.critic_agent import (
+        critique_sample,
+        run_critic_batch,
+        _parse_critic_response,
+        CRITIC_SYSTEM_PROMPT,
+    )
+    CRITIC_PATH = "modifai.core.critic_agent"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -141,7 +151,7 @@ class TestParseCriticResponse:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestCritiqueSample:
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_returns_accept_verdict(self, mock_boto):
         mock_client = MagicMock()
         mock_boto.return_value = mock_client
@@ -153,7 +163,7 @@ class TestCritiqueSample:
         assert result["rewritten_output"] is None
         assert "scores" in result
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_returns_rewrite_verdict(self, mock_boto):
         mock_client = MagicMock()
         mock_boto.return_value = mock_client
@@ -165,7 +175,7 @@ class TestCritiqueSample:
         assert isinstance(result["rewritten_output"], str)
         assert len(result["rewritten_output"]) > 0
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_returns_reject_verdict(self, mock_boto):
         mock_client = MagicMock()
         mock_boto.return_value = mock_client
@@ -175,7 +185,7 @@ class TestCritiqueSample:
 
         assert result["verdict"] == "reject"
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_malformed_json_retries_then_rejects(self, mock_boto):
         """LLM returns garbage → one retry → still garbage → safe REJECT."""
         mock_client = MagicMock()
@@ -191,7 +201,7 @@ class TestCritiqueSample:
         assert result["verdict"] == "reject"
         assert mock_client.converse.call_count == 2  # original + 1 retry
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_bedrock_exception_falls_back_to_reject(self, mock_boto):
         """If Bedrock raises an exception, we get a safe REJECT, not a crash."""
         mock_client = MagicMock()
@@ -259,7 +269,7 @@ BAD_VERDICTS = [
 
 
 class TestBadSamplesNeverAccepted:
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_all_bad_samples_rejected_or_rewritten(self, mock_boto):
         """
         Feed 5 deliberately bad samples through critique_sample.
@@ -285,7 +295,7 @@ class TestBadSamplesNeverAccepted:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestRunCriticBatch:
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_batch_stats_are_correct(self, mock_boto):
         """3 samples: 1 accept, 1 rewrite, 1 reject → correct stat counts."""
         mock_client = MagicMock()
@@ -307,7 +317,7 @@ class TestRunCriticBatch:
         assert stats["total"] == 3
         assert stats["survivor_count"] == 2  # accept + rewrite
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_rewritten_sample_uses_corrected_response(self, mock_boto):
         """When verdict is 'rewrite', the survivor must use rewritten_output."""
         mock_client = MagicMock()
@@ -321,7 +331,7 @@ class TestRunCriticBatch:
         assert survivor["response"] == REWRITE_VERDICT["rewritten_output"]
         assert survivor.get("_critic_rewritten") is True
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_accepted_sample_unchanged_in_survivors(self, mock_boto):
         """Accepted samples must appear in survivors with their original response."""
         mock_client = MagicMock()
@@ -333,7 +343,7 @@ class TestRunCriticBatch:
         assert len(output["survivors"]) == 1
         assert output["survivors"][0]["response"] == GOOD_SAMPLE["response"]
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_sample_with_missing_chunk_id_is_rejected(self, mock_boto):
         """A sample referencing a chunk_id not in the chunk list must be rejected."""
         mock_client = MagicMock()
@@ -346,7 +356,7 @@ class TestRunCriticBatch:
         assert output["stats"]["survivor_count"] == 0
         mock_client.converse.assert_not_called()
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_empty_dataset_all_accepted_edge_case(self, mock_boto):
         """
         Edge case (P1 Day 4 task): empty dataset → zero samples processed,
@@ -364,7 +374,7 @@ class TestRunCriticBatch:
         assert output["results"] == []
         mock_client.converse.assert_not_called()
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_accept_pct_calculation(self, mock_boto):
         """accept_pct must be a percentage (0–100), not a ratio (0–1)."""
         mock_client = MagicMock()
@@ -387,7 +397,7 @@ class TestOutputSchemaContract:
     Ensures the Critic output always matches the locked schema.
     P2 depends on this shape for the modifai-critic Lambda.
     """
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_single_verdict_has_required_keys(self, mock_boto):
         mock_client = MagicMock()
         mock_boto.return_value = mock_client
@@ -401,7 +411,7 @@ class TestOutputSchemaContract:
         assert "scores" in result
         assert all(k in result["scores"] for k in ("specificity", "grounding", "format"))
 
-    @patch("modifai.core.critic_agent.boto3.client")
+    @patch(f"{CRITIC_PATH}.boto3.client")
     def test_batch_output_has_required_keys(self, mock_boto):
         mock_client = MagicMock()
         mock_boto.return_value = mock_client

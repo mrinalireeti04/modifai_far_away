@@ -130,7 +130,7 @@ def _make_bedrock_response(verdict_dict):
 
 class TestCriticLambdaHandler(unittest.TestCase):
 
-    @patch("handler.boto3.client")
+    @patch("lambda_critic_handler.boto3.client")
     def test_happy_path_accept_and_reject(self, mock_boto):
         """
         Dataset: 1 good + 1 hallucinated + 1 vague + 1 duplicate of good.
@@ -162,11 +162,11 @@ class TestCriticLambdaHandler(unittest.TestCase):
             _make_bedrock_response(REJECT_VERDICT),
         ]
 
-        from handler import handler
+        from lambda_critic_handler import handler
         result = handler(dict(BASE_EVENT), None)
 
         qc = result["step_results"]["quality_control"]
-        print(f"\n✅ QC Result: {json.dumps(qc, indent=2)}")
+        print(f"\n[OK] QC Result: {json.dumps(qc, indent=2)}")
 
         self.assertEqual(qc["total_input"], 4)
         self.assertEqual(qc["duplicates_removed"], 1)
@@ -182,7 +182,7 @@ class TestCriticLambdaHandler(unittest.TestCase):
         call_kwargs = s3_mock.put_object.call_args[1]
         self.assertIn("clean_dataset.jsonl", call_kwargs["Key"])
 
-    @patch("handler.boto3.client")
+    @patch("lambda_critic_handler.boto3.client")
     def test_rewrite_verdict_replaces_response(self, mock_boto):
         """When Critic rewrites, survivors must use the corrected response."""
         s3_mock = MagicMock()
@@ -210,7 +210,7 @@ class TestCriticLambdaHandler(unittest.TestCase):
         }
         bedrock_mock.converse.return_value = _make_bedrock_response(rewrite_verdict)
 
-        from handler import handler
+        from lambda_critic_handler import handler
         result = handler(dict(BASE_EVENT), None)
 
         qc = result["step_results"]["quality_control"]
@@ -223,7 +223,7 @@ class TestCriticLambdaHandler(unittest.TestCase):
         self.assertEqual(written_sample["response"], corrected)
         self.assertTrue(written_sample.get("_critic_rewritten"))
 
-    @patch("handler.boto3.client")
+    @patch("lambda_critic_handler.boto3.client")
     def test_empty_examples_handled_gracefully(self, mock_boto):
         """Empty dataset: zero Bedrock calls, stats all zero, no crash."""
         s3_mock = MagicMock()
@@ -239,7 +239,7 @@ class TestCriticLambdaHandler(unittest.TestCase):
             _make_s3_body([CHUNK]),
         ]
 
-        from handler import handler
+        from lambda_critic_handler import handler
         result = handler(dict(BASE_EVENT), None)
 
         qc = result["step_results"]["quality_control"]
@@ -248,7 +248,7 @@ class TestCriticLambdaHandler(unittest.TestCase):
         self.assertEqual(qc["critic_stats"]["survivor_count"], 0)
         bedrock_mock.converse.assert_not_called()
 
-    @patch("handler.boto3.client")
+    @patch("lambda_critic_handler.boto3.client")
     def test_output_schema_is_backward_compatible(self, mock_boto):
         """
         The output schema must be identical to what the old QC Lambda returned.
@@ -270,7 +270,7 @@ class TestCriticLambdaHandler(unittest.TestCase):
         ]
         bedrock_mock.converse.return_value = _make_bedrock_response(ACCEPT_VERDICT)
 
-        from handler import handler
+        from lambda_critic_handler import handler
         result = handler(dict(BASE_EVENT), None)
 
         qc = result["step_results"]["quality_control"]
